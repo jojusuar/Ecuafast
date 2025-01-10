@@ -17,7 +17,8 @@ void *askSUPERCIA();
 
 Boat *myBoat;
 
-int main()
+
+int main(int argc, char *argv[])
 {   
     myBoat = (Boat *)malloc(sizeof(Boat));
     myBoat->type = PANAMAX;
