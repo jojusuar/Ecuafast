@@ -25,6 +25,7 @@ int main(int argc, char* argv[]){
     weights->index = 0;
     float last_avg = -1;
     float item_ponderation = 1 / WEIGHTS_BUFFERSIZE;
+    weights->mutex = (sem_t *)malloc(sizeof(sem_t));
     sem_init(weights->mutex, 0, 1);
 
     int listenfd;
@@ -45,6 +46,8 @@ int main(int argc, char* argv[]){
         pthread_create(&tid, NULL, workerThread, (void *)connfd);
     }
     sem_destroy(weights->mutex);
+    free(weights->mutex);
+    free(weights);
     return 0;
 }
 
@@ -64,14 +67,21 @@ void *workerThread(void *arg){
 
     sem_wait(weights->mutex);
     weights->array[weights->index] = currentBoat->avg_weight;
-    if(weights->full){
-        // IMPLEMENTAR EL RECALCULO RAPIDO DE AVG
+    if(weights->full){ //fast recalculation
+        weights->last_avg = weights->last_avg -( weights->array[weights->index] * weights->item_ponderation) + (currentBoat->avg_weight * weights->item_ponderation);
     }
-    else if(weights->index == WEIGHTS_BUFFERSIZE-1){
-        weights->full = true;
-        //CALCULAR EL AVG CON LOS PESOS EXISTENTES
+    else{
+        if(weights->index == WEIGHTS_BUFFERSIZE-1){
+            weights->full = true;
+        }
+        float sum = 0;
+        for(int i = 0; i <= weights->index; i++){ //slow initial calculation
+            sum += weights->array[i];
+        }
+        weights->last_avg = sum / (weights->index + 1);
     }
     weights->index = (weights->index + 1) % WEIGHTS_BUFFERSIZE;
+    printf("Current avg weight: %f\n", weights->last_avg);
     sem_post(weights->mutex);
 
     printf("Type: %d, avg weight: %f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);

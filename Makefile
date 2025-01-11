@@ -17,5 +17,6 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -f $(OBJS) $(TARGET) sri ecuafast
+	rm -f *.o
 
 .PHONY: all clean

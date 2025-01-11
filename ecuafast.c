@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
+#include <getopt.h>
+#include <ctype.h>
 #include "common.c"
 #include "boat.h"
 
@@ -19,11 +21,74 @@ Boat *myBoat;
 
 
 int main(int argc, char *argv[])
-{   
+{
+    char *tvalue = NULL;
+    char *wvalue = NULL;
+    char *dvalue = NULL;
+    bool tflag = false;
+    bool wflag = false;
+    bool dflag = false;
+    int index;
+    int c;
+
+    opterr = 0;
+    while ((c = getopt (argc, argv, "t:w:d:")) != -1){
+        switch (c)
+        {
+        case 't':
+            tvalue = optarg;
+            tflag = true;
+            break;
+        case 'w':
+            wvalue = optarg;
+            wflag = true;
+            break;
+        case 'd':
+            dvalue = optarg;
+            dflag = true;
+            break;
+        case 'h':
+            printf("Usage: %s [-t] <load type> [-w] <avg. weight> [-d] <destination>\n", argv[0]);
+            printf("    -h:             Shows this message.\n");
+            return 0;
+        case '?':
+            if (optopt == 't')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            if (optopt == 'w')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            if (optopt == 'd')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            else if (isprint (optopt))
+            fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+            else
+            fprintf (stderr,
+                    "Unknown option character `\\x%x'.\n",
+                    optopt);
+            return 1;
+        }
+    }
+
     myBoat = (Boat *)malloc(sizeof(Boat));
-    myBoat->type = PANAMAX;
-    myBoat->avg_weight = 4.33;
-    myBoat->destination = "USA";
+    if(tflag){
+        switch(atoi(tvalue)){
+            case 1:
+                myBoat->type = CONVENTIONAL;
+                break;
+            case 2:
+                myBoat->type = PANAMAX;
+                break;
+            default:
+                free(myBoat);
+                fprintf(stderr, "Invalid boat type.\n");
+                return 1;
+        }
+    }
+    if(wflag){
+        myBoat->avg_weight = atof(wvalue);
+    }
+    if(dflag){
+        myBoat->destination = dvalue;
+    }
 
     pthread_t sri_tid, senae_tid, supercia_tid;
     pthread_create(&sri_tid, NULL, askSRI, NULL);
