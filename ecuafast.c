@@ -6,7 +6,7 @@
 #include "common.c"
 #include "boat.h"
 
-#define SRI_HOSTNAME "127.0.0.1"
+#define SRI_HOSTNAME "127.0.0.1" // these TCP/IP addresses could be changed to the actual IPs of each institution's server
 #define SRI_PORT "8080"
 #define SENAE_HOSTNAME "127.0.0.1"
 #define SENAE_PORT "8081"
