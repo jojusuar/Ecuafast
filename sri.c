@@ -8,11 +8,11 @@
 void *workerThread(void *arg);
 
 typedef struct WeightBuffer{
-    float array[WEIGHTS_BUFFERSIZE];
-    bool full;
+    double array[WEIGHTS_BUFFERSIZE];
     int index;
-    float last_avg;
-    float item_ponderation;
+    double current_avg;
+    int full;
+    double item_ponderation;
     sem_t *mutex;
 }WeightBuffer;
 
@@ -21,10 +21,9 @@ WeightBuffer *weights;
 int main(int argc, char* argv[]){
 
     weights = (WeightBuffer *)malloc(sizeof(WeightBuffer));
-    weights->full = false;
-    weights->index = 0;
-    float last_avg = -1;
-    float item_ponderation = 1 / WEIGHTS_BUFFERSIZE;
+    weights->full = 0;
+    weights->current_avg = 0;
+    weights->item_ponderation = 1 / (double) WEIGHTS_BUFFERSIZE;
     weights->mutex = (sem_t *)malloc(sizeof(sem_t));
     sem_init(weights->mutex, 0, 1);
 
@@ -55,7 +54,6 @@ void *workerThread(void *arg){
     pthread_detach(pthread_self());
     int connfd = *(int *)arg;
     free(arg);
-
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
     read(connfd, &(currentBoat->type), sizeof(BoatType));
@@ -66,22 +64,20 @@ void *workerThread(void *arg){
     currentBoat->destination[dest_length] = '\0';
 
     sem_wait(weights->mutex);
+    if(weights->full == 0){
+        weights->current_avg = currentBoat->avg_weight;
+        weights->full++;
+    }
+    else if(weights->full < WEIGHTS_BUFFERSIZE){
+        weights->current_avg = (weights->current_avg * weights->full + currentBoat->avg_weight)/(weights->full + 1);
+        weights->full++;
+    }
+    else{ //fast as hell recalculation
+        weights->current_avg = weights->current_avg + weights->item_ponderation * (currentBoat->avg_weight - weights->array[weights->index]);
+    }
     weights->array[weights->index] = currentBoat->avg_weight;
-    if(weights->full){ //fast recalculation
-        weights->last_avg = weights->last_avg -( weights->array[weights->index] * weights->item_ponderation) + (currentBoat->avg_weight * weights->item_ponderation);
-    }
-    else{
-        if(weights->index == WEIGHTS_BUFFERSIZE-1){
-            weights->full = true;
-        }
-        float sum = 0;
-        for(int i = 0; i <= weights->index; i++){ //slow initial calculation
-            sum += weights->array[i];
-        }
-        weights->last_avg = sum / (weights->index + 1);
-    }
     weights->index = (weights->index + 1) % WEIGHTS_BUFFERSIZE;
-    printf("Current avg weight: %f\n", weights->last_avg);
+    printf("Current avg weight: %f\n", weights->current_avg);
     sem_post(weights->mutex);
 
     printf("Type: %d, avg weight: %f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);
