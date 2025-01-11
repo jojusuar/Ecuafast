@@ -87,6 +87,9 @@ int main(int argc, char *argv[])
         myBoat->avg_weight = atof(wvalue);
     }
     if(dflag){
+        for (int i = 0; dvalue[i]; i++) {
+            dvalue[i] = tolower((unsigned char)dvalue[i]);
+        }
         myBoat->destination = dvalue;
     }
 
@@ -94,8 +97,9 @@ int main(int argc, char *argv[])
     pthread_create(&sri_tid, NULL, askSRI, NULL);
     // pthread_create(&senae_tid, NULL, askSENAE, NULL);
     // pthread_create(&supercia_tid, NULL, askSUPERCIA, NULL);
-    void *result;
+    char *result;
     pthread_join(sri_tid, (void **)&result);
+    printf("SRI response: %s\n", result);
     free(result);
     free(myBoat);
     return 0;
@@ -111,9 +115,11 @@ void *askSRI()
     int dest_length = strlen(myBoat->destination);
     write(connfd, &(dest_length), sizeof(int));
     write(connfd, myBoat->destination, dest_length);
-    bool *result = (bool *)malloc(sizeof(bool));
-    *result = true;
-    return (void *)result;
+    char *response = (char *)malloc(5*sizeof(char));
+    ssize_t bytes_read = read(connfd, response, 5);
+    response[bytes_read] = '\0';
+    close(connfd);
+    return (void *)response;
 }
 
 void *askSENAE()

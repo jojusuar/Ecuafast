@@ -2,7 +2,9 @@
 #include "boat.h"
 #include <pthread.h>
 #include <semaphore.h>
+#include <math.h>
 
+#define EPSILON 1e-9
 #define WEIGHTS_BUFFERSIZE 20
 
 void *workerThread(void *arg);
@@ -22,7 +24,7 @@ int main(int argc, char* argv[]){
 
     weights = (WeightBuffer *)malloc(sizeof(WeightBuffer));
     weights->full = 0;
-    weights->current_avg = 0;
+    weights->current_avg = INFINITY;
     weights->item_ponderation = 1 / (double) WEIGHTS_BUFFERSIZE;
     weights->mutex = (sem_t *)malloc(sizeof(sem_t));
     sem_init(weights->mutex, 0, 1);
@@ -63,7 +65,15 @@ void *workerThread(void *arg){
     read(connfd, currentBoat->destination, dest_length);
     currentBoat->destination[dest_length] = '\0';
 
+    bool checkBoat = false;
     sem_wait(weights->mutex);
+    printf("Current avg: %f\n", weights->current_avg);
+    bool isConventional = currentBoat->type == CONVENTIONAL;
+    bool toEcuador = strcmp(currentBoat->destination, "ecuador") == 0;
+    bool exceedsWeight = (currentBoat->avg_weight - weights->current_avg) > EPSILON;
+    if(isConventional && toEcuador && exceedsWeight){
+        checkBoat = true;
+    }
     if(weights->full == 0){
         weights->current_avg = currentBoat->avg_weight;
         weights->full++;
@@ -77,11 +87,17 @@ void *workerThread(void *arg){
     }
     weights->array[weights->index] = currentBoat->avg_weight;
     weights->index = (weights->index + 1) % WEIGHTS_BUFFERSIZE;
-    printf("Current avg weight: %f\n", weights->current_avg);
     sem_post(weights->mutex);
 
-    printf("Type: %d, avg weight: %f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);
-
+    if(checkBoat){
+        write(connfd, "CHECK", 5);
+    }
+    else{
+        write(connfd, "PASS", 4);
+    }
+    printf("Type: %d, avg weight: %f, destination: %s, flag: %d\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination, checkBoat);
+    
+    close(connfd);
     free(currentBoat->destination);
     free(currentBoat);
     return NULL;
