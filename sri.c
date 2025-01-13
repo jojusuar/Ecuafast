@@ -71,9 +71,7 @@ void *workerThread(void *arg){
     bool isConventional = currentBoat->type == CONVENTIONAL;
     bool toEcuador = strcmp(currentBoat->destination, "ecuador") == 0;
     bool exceedsWeight = (currentBoat->avg_weight - weights->current_avg) > EPSILON;
-    if(isConventional && toEcuador && exceedsWeight){
-        checkBoat = true;
-    }
+    checkBoat = isConventional && toEcuador && exceedsWeight;
     if(weights->full == 0){
         weights->current_avg = currentBoat->avg_weight;
         weights->full++;

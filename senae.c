@@ -73,7 +73,10 @@ void *workerThread(void *arg){
     printHeap(buffer->maxHeap);
     printf("]\n");
     printf("Q3: %f\n", thirdQ);
-    checkBoat = currentBoat->avg_weight - thirdQ > EPSILON;
+    bool overweight  = (currentBoat->avg_weight - thirdQ) > EPSILON;
+    bool isPanamax = currentBoat->type == PANAMAX;
+    bool toTarget = strcmp(currentBoat->destination, "usa") == 0 || strcmp(currentBoat->destination, "europa") == 0 || strcmp(currentBoat->destination, "europe") == 0;
+    checkBoat = overweight && isPanamax && toTarget;
     if (!isEmpty(buffer->minHeap) && currentBoat->avg_weight >= peek(buffer->minHeap)) {
         insert(buffer->minHeap, currentBoat->avg_weight);
     } else {

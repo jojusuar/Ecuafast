@@ -13,6 +13,7 @@
 #define SUPERCIA_HOSTNAME "127.0.0.1"
 #define SUPERCIA_PORT "8082"
 
+char *askAgency(char *hostname, char *port);
 void *askSRI();
 void *askSENAE();
 void *askSUPERCIA();
@@ -94,37 +95,40 @@ int main(int argc, char *argv[])
     }
 
     pthread_t sri_tid, senae_tid, supercia_tid;
-    // pthread_create(&sri_tid, NULL, askSRI, NULL);
+    pthread_create(&sri_tid, NULL, askSRI, NULL);
     pthread_create(&senae_tid, NULL, askSENAE, NULL);
-    // pthread_create(&supercia_tid, NULL, askSUPERCIA, NULL);
-    char *result;
-    pthread_join(senae_tid, (void **)&result);
-    printf("SRI response: %s\n", result);
-    free(result);
+    pthread_create(&supercia_tid, NULL, askSUPERCIA, NULL);
+    char *sriResult, *senaeResult, *superciaResult;
+    pthread_join(sri_tid, (void **)&sriResult);
+    pthread_join(senae_tid, (void **)&senaeResult);
+    pthread_join(supercia_tid, (void **)&superciaResult);
+    printf("SRI says: %s\n", sriResult);
+    printf("SENAE says: %s\n", senaeResult);
+    printf("SUPERCIA says: %s\n", superciaResult);
+    free(sriResult);
+    free(senaeResult);
+    free(superciaResult);
     free(myBoat);
     return 0;
 }
 
 void *askSRI()
 {
-    int connfd = open_clientfd(SRI_HOSTNAME, SRI_PORT);
-    if (connfd < 0)
-        connection_error(connfd);
-    write(connfd, &(myBoat->type), sizeof(BoatType));
-    write(connfd, &(myBoat->avg_weight), sizeof(float));
-    int dest_length = strlen(myBoat->destination);
-    write(connfd, &(dest_length), sizeof(int));
-    write(connfd, myBoat->destination, dest_length);
-    char *response = (char *)malloc(5*sizeof(char));
-    ssize_t bytes_read = read(connfd, response, 5);
-    response[bytes_read] = '\0';
-    close(connfd);
-    return (void *)response;
+    return (void *)askAgency(SRI_HOSTNAME, SRI_PORT);
 }
 
 void *askSENAE()
 {
-    int connfd = open_clientfd(SENAE_HOSTNAME, SENAE_PORT);
+    return (void *)askAgency(SENAE_HOSTNAME, SENAE_PORT);
+}
+
+void *askSUPERCIA()
+{
+    return (void *)askAgency(SUPERCIA_HOSTNAME, SUPERCIA_PORT);
+}
+
+char *askAgency(char *hostname, char *port){
+    int connfd = open_clientfd(hostname, port);
     if (connfd < 0)
         connection_error(connfd);
     write(connfd, &(myBoat->type), sizeof(BoatType));
@@ -134,14 +138,11 @@ void *askSENAE()
     write(connfd, myBoat->destination, dest_length);
     char *response = (char *)malloc(5*sizeof(char));
     ssize_t bytes_read = read(connfd, response, 5);
+    // AQUI LANZAR UNA SENAL PARA NOTIFICAR QUE LLEGO LA RESPUESTA
     response[bytes_read] = '\0';
+    // HACER QUE LAS AGENCIAS ESPEREN OTRO MENSAJE DE ECUAFAST PARA HACER COMMIT A LA INSERCION DEL NUEVO BARCO EN SUS ESTRUCTURAS,
+    // EL COMMIT SE ENVIA SI SE LANZARON LAS 3 SENALES DE RESPUESTA RECIBIDA,
+    // CASO CONTRARIO SE ENVIA UN ROLLBACK
     close(connfd);
-    return (void *)response;
-}
-
-void *askSUPERCIA()
-{
-    int connfd = open_clientfd(SRI_HOSTNAME, SRI_PORT);
-    if (connfd < 0)
-        connection_error(connfd);
+    return response;
 }
