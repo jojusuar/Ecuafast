@@ -94,11 +94,11 @@ int main(int argc, char *argv[])
     }
 
     pthread_t sri_tid, senae_tid, supercia_tid;
-    pthread_create(&sri_tid, NULL, askSRI, NULL);
-    // pthread_create(&senae_tid, NULL, askSENAE, NULL);
+    // pthread_create(&sri_tid, NULL, askSRI, NULL);
+    pthread_create(&senae_tid, NULL, askSENAE, NULL);
     // pthread_create(&supercia_tid, NULL, askSUPERCIA, NULL);
     char *result;
-    pthread_join(sri_tid, (void **)&result);
+    pthread_join(senae_tid, (void **)&result);
     printf("SRI response: %s\n", result);
     free(result);
     free(myBoat);
@@ -124,9 +124,19 @@ void *askSRI()
 
 void *askSENAE()
 {
-    int connfd = open_clientfd(SRI_HOSTNAME, SRI_PORT);
+    int connfd = open_clientfd(SENAE_HOSTNAME, SENAE_PORT);
     if (connfd < 0)
         connection_error(connfd);
+    write(connfd, &(myBoat->type), sizeof(BoatType));
+    write(connfd, &(myBoat->avg_weight), sizeof(float));
+    int dest_length = strlen(myBoat->destination);
+    write(connfd, &(dest_length), sizeof(int));
+    write(connfd, myBoat->destination, dest_length);
+    char *response = (char *)malloc(5*sizeof(char));
+    ssize_t bytes_read = read(connfd, response, 5);
+    response[bytes_read] = '\0';
+    close(connfd);
+    return (void *)response;
 }
 
 void *askSUPERCIA()
