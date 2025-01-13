@@ -18,6 +18,7 @@ SENAEBuffer *buffer;
 
 void *workerThread(void *arg);
 double get3rdQuartile(SENAEBuffer *buffer);
+void rebalanceHeaps(SENAEBuffer *buffer);
 
 int main(int argc, char* argv[]){
     buffer = (SENAEBuffer *)malloc(sizeof(SENAEBuffer));
@@ -78,14 +79,7 @@ void *workerThread(void *arg){
     } else {
         insert(buffer->maxHeap, currentBoat->avg_weight);
     }
-    while (buffer->maxHeap->size > ((buffer->totalSize + 1) * 3 / 4)) {
-        int root = pop(buffer->maxHeap);
-        insert(buffer->minHeap, root);
-    }
-    while (buffer->minHeap->size > ((buffer->totalSize + 1) / 4)) {
-        int root = pop(buffer->minHeap);
-        insert(buffer->maxHeap, root);
-    }
+    rebalanceHeaps(buffer);
     buffer->totalSize++;
     sem_post(&(buffer->mutex));
 
@@ -103,6 +97,7 @@ void *workerThread(void *arg){
     return NULL;
 }
 
+
 double get3rdQuartile(SENAEBuffer *buffer){
     if(buffer->totalSize < 3){
         return -1;
@@ -113,4 +108,16 @@ double get3rdQuartile(SENAEBuffer *buffer){
     }
     double decimal = ponderation - (int)ponderation;
     return peek(buffer->maxHeap) + decimal * (peek(buffer->minHeap) - peek(buffer->maxHeap));
+}
+
+
+void rebalanceHeaps(SENAEBuffer *buffer){
+    while (buffer->maxHeap->size > ((buffer->totalSize + 1) * 3 / 4)) {
+        int root = pop(buffer->maxHeap);
+        insert(buffer->minHeap, root);
+    }
+    while (buffer->minHeap->size > ((buffer->totalSize + 1) / 4)) {
+        int root = pop(buffer->minHeap);
+        insert(buffer->maxHeap, root);
+    }
 }
