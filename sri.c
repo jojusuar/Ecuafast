@@ -8,12 +8,15 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <getopt.h>
+#include <ctype.h>
 
 #define EPSILON 1e-9
 #define WEIGHTS_BUFFERSIZE 20
 
 void *workerThread(void *);
 void sigpipe_handler(int);
+void sigint_handler(int);
 
 typedef struct WeightBuffer{
     double array[WEIGHTS_BUFFERSIZE];
@@ -25,8 +28,61 @@ typedef struct WeightBuffer{
 }WeightBuffer;
 
 WeightBuffer *weights;
+int min_latency;
+int max_latency;
 
 int main(int argc, char* argv[]){
+    char *fvalue = NULL;
+    char *tvalue = NULL;
+    bool fflag = false;
+    bool tflag = false;
+    int index;
+    int c;
+
+    opterr = 0;
+    while ((c = getopt (argc, argv, "f:t:")) != -1){
+        switch (c)
+        {
+        case 'f':
+            fvalue = optarg;
+            fflag = true;
+            break;
+        case 't':
+            tvalue = optarg;
+            tflag = true;
+            break;
+        case 'h':
+            printf("Usage: %s -f <response latency floor> -t <response latency top>\n", argv[0]);
+            printf("    -h:             Shows this message.\n");
+            return 0;
+        case '?':
+            if (optopt == 'f')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            if (optopt == 't')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            else if (isprint (optopt))
+            fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+            else
+            fprintf (stderr,
+                    "Unknown option character `\\x%x'.\n",
+                    optopt);
+            return 1;
+        }
+    }
+    if(fflag){
+        min_latency = atoi(fvalue);
+    }
+    else{
+        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+        return 1;
+    }
+    if(tflag){
+        max_latency = atoi(tvalue);
+    }
+    else{
+        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+        return 1;
+    }
 
     weights = (WeightBuffer *)malloc(sizeof(WeightBuffer));
     weights->full = 0;
@@ -34,6 +90,15 @@ int main(int argc, char* argv[]){
     weights->item_ponderation = 1 / (double) WEIGHTS_BUFFERSIZE;
     weights->mutex = (sem_t *)malloc(sizeof(sem_t));
     sem_init(weights->mutex, 0, 1);
+
+    struct sigaction sigintAction;
+    sigintAction.sa_handler = sigint_handler;
+    sigintAction.sa_flags = 0; // No special flags
+    sigemptyset(&sigintAction.sa_mask);
+    if (sigaction(SIGINT, &sigintAction, NULL) == -1) {
+        perror("sigaction");
+        exit(1);
+    }
 
     int listenfd;
     unsigned int clientlen;
@@ -71,6 +136,7 @@ void *workerThread(void *arg){
         perror("sigaction");
         pthread_exit(NULL);
     }
+    int latency = min_latency + rand() % (max_latency - min_latency + 1);
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
     bool checkBoat = false;
@@ -92,7 +158,7 @@ void *workerThread(void *arg){
     bool exceedsWeight = (currentBoat->avg_weight - weights->current_avg) > EPSILON;
     checkBoat = isConventional && toEcuador && exceedsWeight;
     sem_post(weights->mutex);
-    sleep(1);
+    sleep(latency); //simulate response latency
     if(checkBoat){
         write(connfd, "CHECK", 5);
     }
@@ -135,5 +201,13 @@ void *workerThread(void *arg){
 
 void sigpipe_handler(int signum) {
     printf("Thread received SIGPIPE, exiting...\n");
-    pthread_exit(NULL); // Terminate the thread
+    pthread_exit(NULL);
+}
+
+void sigint_handler(int signum) {
+    printf("Closing gracefully...\n");
+    sem_destroy(weights->mutex);
+    free(weights->mutex);
+    free(weights);
+    exit(0);
 }

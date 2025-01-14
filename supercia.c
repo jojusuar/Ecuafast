@@ -7,12 +7,79 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include <getopt.h>
+#include <ctype.h>
 
 void *workerThread(void *arg);
 void sigpipe_handler(int);
+void sigint_handler(int);
+
+int min_latency;
+int max_latency;
 
 int main(int argc, char* argv[]){
+    char *fvalue = NULL;
+    char *tvalue = NULL;
+    bool fflag = false;
+    bool tflag = false;
+    int index;
+    int c;
+
+    opterr = 0;
+    while ((c = getopt (argc, argv, "f:t:")) != -1){
+        switch (c)
+        {
+        case 'f':
+            fvalue = optarg;
+            fflag = true;
+            break;
+        case 't':
+            tvalue = optarg;
+            tflag = true;
+            break;
+        case 'h':
+            printf("Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+            printf("    -h:             Shows this message.\n");
+            return 0;
+        case '?':
+            if (optopt == 'f')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            if (optopt == 't')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            else if (isprint (optopt))
+            fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+            else
+            fprintf (stderr,
+                    "Unknown option character `\\x%x'.\n",
+                    optopt);
+            return 1;
+        }
+    }
+    if(fflag){
+        min_latency = atoi(fvalue);
+    }
+    else{
+        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+        return 1;
+    }
+    if(tflag){
+        max_latency = atoi(tvalue);
+    }
+    else{
+        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+        return 1;
+    }
+
     srand((unsigned int)time(NULL));
+
+    struct sigaction sigintAction;
+    sigintAction.sa_handler = sigint_handler;
+    sigintAction.sa_flags = 0; // No special flags
+    sigemptyset(&sigintAction.sa_mask);
+    if (sigaction(SIGINT, &sigintAction, NULL) == -1) {
+        perror("sigaction");
+        exit(1);
+    }
 
     int listenfd;
     unsigned int clientlen;
@@ -47,6 +114,7 @@ void *workerThread(void *arg){
         perror("sigaction");
         pthread_exit(NULL);
     }
+    int latency = min_latency + rand() % (max_latency - min_latency + 1);
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
     bool checkBoat;
@@ -64,7 +132,7 @@ void *workerThread(void *arg){
 
     int random_int = rand() % 100;
     checkBoat = (currentBoat->type == PANAMAX && random_int < 50) || (currentBoat->type == CONVENTIONAL && random_int < 30);
-    sleep(3);
+    sleep(latency); //simulate response latency
     if(checkBoat){
         write(connfd, "CHECK", 5);
     }
@@ -91,5 +159,10 @@ void *workerThread(void *arg){
 
 void sigpipe_handler(int signum) {
     printf("Thread received SIGPIPE, exiting...\n");
-    pthread_exit(NULL); // Terminate the thread
+    pthread_exit(NULL);
+}
+
+void sigint_handler(int signum) {
+    printf("Closing gracefully...\n");
+    exit(0);
 }

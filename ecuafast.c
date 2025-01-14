@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
@@ -6,6 +7,7 @@
 #include <semaphore.h>
 #include "common.c"
 #include "boat.h"
+#include <signal.h>
 
 #define SRI_HOSTNAME "127.0.0.1" // these TCP/IP addresses could be changed to the actual IPs of each institution's server
 #define SRI_PORT "8080"
@@ -21,6 +23,7 @@ void *askSUPERCIA();
 void *startTimeout();
 void rollback();
 void commit();
+void handle_sigint(int);
 
 typedef struct {
     int srifd;
@@ -34,6 +37,8 @@ int responseCounter;
 sem_t counterMutex;
 sem_t commitMutex;
 Connections *connections;
+pthread_t request_tid;
+pthread_t sri_tid, senae_tid, supercia_tid;
 char sriResult[6], senaeResult[6], superciaResult[6];
 
 int main(int argc, char *argv[])
@@ -70,7 +75,7 @@ int main(int argc, char *argv[])
             tflag = true;
             break;
         case 'h':
-            printf("Usage: %s [-t] <load type> [-w] <avg. weight> [-d] <destination>\n", argv[0]);
+            printf("Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t <response timeout (seconds)>\n", argv[0]);
             printf("    -h:             Shows this message.\n");
             return 0;
         case '?':
@@ -91,6 +96,7 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
+
     myBoat = (Boat *)malloc(sizeof(Boat));
     if(cflag){
         switch(atoi(cvalue)){
@@ -106,8 +112,16 @@ int main(int argc, char *argv[])
                 return 1;
         }
     }
+    else{
+        fprintf(stderr, "Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t <response timeout (seconds)>\n", argv[0]);
+        exit(1);
+    }
     if(wflag){
         myBoat->avg_weight = atof(wvalue);
+    }
+    else{
+        fprintf(stderr, "Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t <response timeout (seconds)>\n", argv[0]);
+        exit(1);
     }
     if(dflag){
         for (int i = 0; dvalue[i]; i++) {
@@ -115,8 +129,16 @@ int main(int argc, char *argv[])
         }
         myBoat->destination = dvalue;
     }
+    else{
+        fprintf(stderr, "Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t <response timeout (seconds)>\n", argv[0]);
+        exit(1);
+    }
     if(tflag){
         timeout = atoi(tvalue);
+    }
+    else{
+        fprintf(stderr, "Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t <response timeout (seconds)>\n", argv[0]);
+        exit(1);
     }
 
     sem_init(&counterMutex, 0, 1);
@@ -129,7 +151,15 @@ int main(int argc, char *argv[])
     connections->senaefd = -1;
     connections->superciafd = -1;
 
-    pthread_t request_tid;
+    struct sigaction sa;
+    sa.sa_handler = handle_sigint;
+    sa.sa_flags = 0; // No special flags
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction");
+        exit(1);
+    }
+
     pthread_create(&request_tid, NULL, startTimeout, NULL);
     sem_wait(&commitMutex);
     commit();
@@ -198,7 +228,6 @@ void *askSUPERCIA()
 
 void *startTimeout(){
     bool attended = false;
-    pthread_t sri_tid, senae_tid, supercia_tid;
     do{
         pthread_create(&sri_tid, NULL, askSRI, NULL);
         pthread_create(&senae_tid, NULL, askSENAE, NULL);
@@ -264,4 +293,16 @@ void commit(){
         write(connections->superciafd, "COMMIT", 6);
         close(connections->superciafd);
     }
+}
+
+void handle_sigint(int sig) {
+    printf("Aborting gracefully...\n");
+    pthread_cancel(sri_tid);
+    pthread_cancel(senae_tid);
+    pthread_cancel(supercia_tid);
+    rollback();
+    free(myBoat);
+    sem_destroy(&counterMutex);
+    free(connections);
+    exit(0);
 }

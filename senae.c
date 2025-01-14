@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include <getopt.h>
+#include <ctype.h>
 
 #define EPSILON 1e-9
 
@@ -19,18 +21,82 @@ typedef struct{
 }SENAEBuffer;
 
 SENAEBuffer *buffer;
+int min_latency;
+int max_latency;
 
 void *workerThread(void *arg);
 double get3rdQuartile(SENAEBuffer *buffer);
 void rebalanceHeaps(SENAEBuffer *buffer);
 void sigpipe_handler(int);
+void sigint_handler(int);
 
 int main(int argc, char* argv[]){
+    char *fvalue = NULL;
+    char *tvalue = NULL;
+    bool fflag = false;
+    bool tflag = false;
+    int index;
+    int c;
+
+    opterr = 0;
+    while ((c = getopt (argc, argv, "f:t:")) != -1){
+        switch (c)
+        {
+        case 'f':
+            fvalue = optarg;
+            fflag = true;
+            break;
+        case 't':
+            tvalue = optarg;
+            tflag = true;
+            break;
+        case 'h':
+            printf("Usage: %s -f <response latency floor> -t <response latency top>\n", argv[0]);
+            printf("    -h:             Shows this message.\n");
+            return 0;
+        case '?':
+            if (optopt == 'f')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            if (optopt == 't')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            else if (isprint (optopt))
+            fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+            else
+            fprintf (stderr,
+                    "Unknown option character `\\x%x'.\n",
+                    optopt);
+            return 1;
+        }
+    }
+    if(fflag){
+        min_latency = atoi(fvalue);
+    }
+    else{
+        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+        return 1;
+    }
+    if(tflag){
+        max_latency = atoi(tvalue);
+    }
+    else{
+        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+        return 1;
+    }
+
     buffer = (SENAEBuffer *)malloc(sizeof(SENAEBuffer));
     buffer->totalSize = 0;
     buffer->minHeap = newHeap(false);
     buffer->maxHeap = newHeap(true);
     sem_init(&(buffer->mutex), 0, 1);
+
+    struct sigaction sigintAction;
+    sigintAction.sa_handler = sigint_handler;
+    sigintAction.sa_flags = 0; // No special flags
+    sigemptyset(&sigintAction.sa_mask);
+    if (sigaction(SIGINT, &sigintAction, NULL) == -1) {
+        perror("sigaction");
+        exit(1);
+    }
 
     int listenfd;
     unsigned int clientlen;
@@ -68,6 +134,7 @@ void *workerThread(void *arg){
         perror("sigaction");
         pthread_exit(NULL);
     }
+    int latency = min_latency + rand() % (max_latency - min_latency + 1);
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
     bool checkBoat = false;
@@ -94,7 +161,7 @@ void *workerThread(void *arg){
     bool isPanamax = currentBoat->type == PANAMAX;
     bool toTarget = strcmp(currentBoat->destination, "usa") == 0 || strcmp(currentBoat->destination, "europa") == 0 || strcmp(currentBoat->destination, "europe") == 0;
     checkBoat = overweight && isPanamax && toTarget;
-    sleep(1.8);
+    sleep(latency); //simulate response latency
     if(checkBoat){
         write(connfd, "CHECK", 5);
     }
@@ -156,5 +223,14 @@ void rebalanceHeaps(SENAEBuffer *buffer){
 
 void sigpipe_handler(int signum) {
     printf("Thread received SIGPIPE, exiting...\n");
-    pthread_exit(NULL); // Terminate the thread
+    pthread_exit(NULL);
+}
+
+void sigint_handler(int signum) {
+    printf("Closing gracefully...\n");
+    destroyHeap(buffer->minHeap);
+    destroyHeap(buffer->maxHeap);
+    sem_destroy(&(buffer->mutex));
+    free(buffer);
+    exit(0);
 }
