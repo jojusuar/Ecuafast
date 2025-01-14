@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <getopt.h>
 #include <ctype.h>
+#include <semaphore.h>
 #include "common.c"
 #include "boat.h"
 
@@ -13,32 +14,48 @@
 #define SUPERCIA_HOSTNAME "127.0.0.1"
 #define SUPERCIA_PORT "8082"
 
-char *askAgency(char *hostname, char *port);
+void askAgency(int, char *);
 void *askSRI();
 void *askSENAE();
 void *askSUPERCIA();
+void *startTimeout();
+void rollback();
+void commit();
+
+typedef struct {
+    int srifd;
+    int senaefd;
+    int superciafd;
+}Connections;
 
 Boat *myBoat;
-
+int timeout;
+int responseCounter;
+sem_t counterMutex;
+sem_t commitMutex;
+Connections *connections;
+char sriResult[6], senaeResult[6], superciaResult[6];
 
 int main(int argc, char *argv[])
 {
-    char *tvalue = NULL;
+    char *cvalue = NULL;
     char *wvalue = NULL;
     char *dvalue = NULL;
-    bool tflag = false;
+    char *tvalue = NULL;
+    bool cflag = false;
     bool wflag = false;
     bool dflag = false;
+    bool tflag = false;
     int index;
     int c;
 
     opterr = 0;
-    while ((c = getopt (argc, argv, "t:w:d:")) != -1){
+    while ((c = getopt (argc, argv, "c:w:d:t:")) != -1){
         switch (c)
         {
-        case 't':
-            tvalue = optarg;
-            tflag = true;
+        case 'c':
+            cvalue = optarg;
+            cflag = true;
             break;
         case 'w':
             wvalue = optarg;
@@ -48,12 +65,18 @@ int main(int argc, char *argv[])
             dvalue = optarg;
             dflag = true;
             break;
+        case 't':
+            tvalue = optarg;
+            tflag = true;
+            break;
         case 'h':
             printf("Usage: %s [-t] <load type> [-w] <avg. weight> [-d] <destination>\n", argv[0]);
             printf("    -h:             Shows this message.\n");
             return 0;
         case '?':
             if (optopt == 't')
+            fprintf (stderr, "-%c requires an argument.\n", optopt);
+            if (optopt == 'c')
             fprintf (stderr, "-%c requires an argument.\n", optopt);
             if (optopt == 'w')
             fprintf (stderr, "-%c requires an argument.\n", optopt);
@@ -68,14 +91,13 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
-
     myBoat = (Boat *)malloc(sizeof(Boat));
-    if(tflag){
-        switch(atoi(tvalue)){
-            case 1:
+    if(cflag){
+        switch(atoi(cvalue)){
+            case 0:
                 myBoat->type = CONVENTIONAL;
                 break;
-            case 2:
+            case 1:
                 myBoat->type = PANAMAX;
                 break;
             default:
@@ -93,56 +115,153 @@ int main(int argc, char *argv[])
         }
         myBoat->destination = dvalue;
     }
+    if(tflag){
+        timeout = atoi(tvalue);
+    }
 
-    pthread_t sri_tid, senae_tid, supercia_tid;
-    pthread_create(&sri_tid, NULL, askSRI, NULL);
-    pthread_create(&senae_tid, NULL, askSENAE, NULL);
-    pthread_create(&supercia_tid, NULL, askSUPERCIA, NULL);
-    char *sriResult, *senaeResult, *superciaResult;
-    pthread_join(sri_tid, (void **)&sriResult);
-    pthread_join(senae_tid, (void **)&senaeResult);
-    pthread_join(supercia_tid, (void **)&superciaResult);
+    sem_init(&counterMutex, 0, 1);
+    sem_init(&commitMutex, 0, -2);
+    sem_wait(&counterMutex);
+    responseCounter = 0;
+    sem_post(&counterMutex);
+    connections = (Connections *)malloc(sizeof(Connections));
+    connections->srifd = -1;
+    connections->senaefd = -1;
+    connections->superciafd = -1;
+
+    pthread_t request_tid;
+    pthread_create(&request_tid, NULL, startTimeout, NULL);
+    sem_wait(&commitMutex);
+    commit();
+    
     printf("SRI says: %s\n", sriResult);
     printf("SENAE says: %s\n", senaeResult);
     printf("SUPERCIA says: %s\n", superciaResult);
-    free(sriResult);
-    free(senaeResult);
-    free(superciaResult);
+    
     free(myBoat);
+    sem_destroy(&counterMutex);
+    free(connections);
     return 0;
 }
 
 void *askSRI()
 {
-    return (void *)askAgency(SRI_HOSTNAME, SRI_PORT);
+    connections->srifd = open_clientfd(SRI_HOSTNAME, SRI_PORT);
+    if(connections->srifd != -1){
+        askAgency(connections->srifd, sriResult);
+        responseCounter++;
+        printf("SRI responded\n");
+        if(responseCounter == 3){
+            sem_post(&commitMutex);
+        }
+        sem_post(&counterMutex);
+    }
+    else{
+        printf("SRI is unreachable.\n");
+    }
 }
 
 void *askSENAE()
 {
-    return (void *)askAgency(SENAE_HOSTNAME, SENAE_PORT);
+    connections->senaefd = open_clientfd(SENAE_HOSTNAME, SENAE_PORT);
+    if(connections->senaefd != -1){
+        askAgency(connections->senaefd, senaeResult);
+        responseCounter++;
+        printf("SENAE responded\n");
+        if(responseCounter == 3){
+            sem_post(&commitMutex);
+        }
+        sem_post(&counterMutex);
+    }
+    else{
+        printf("SENAE is unreachable.\n");
+    }
 }
 
 void *askSUPERCIA()
-{
-    return (void *)askAgency(SUPERCIA_HOSTNAME, SUPERCIA_PORT);
+{   
+    connections->superciafd = open_clientfd(SUPERCIA_HOSTNAME, SUPERCIA_PORT);
+    if(connections->superciafd != -1){
+        askAgency(connections->superciafd, superciaResult);
+        responseCounter++;
+        printf("SUPERCIA responded\n");
+        if(responseCounter == 3){
+            sem_post(&commitMutex);
+        }
+        sem_post(&counterMutex);
+    }
+    else{
+        printf("SUPERCIA is unreachable.\n");
+    }
 }
 
-char *askAgency(char *hostname, char *port){
-    int connfd = open_clientfd(hostname, port);
-    if (connfd < 0)
-        connection_error(connfd);
+
+void *startTimeout(){
+    bool attended = false;
+    pthread_t sri_tid, senae_tid, supercia_tid;
+    do{
+        pthread_create(&sri_tid, NULL, askSRI, NULL);
+        pthread_create(&senae_tid, NULL, askSENAE, NULL);
+        pthread_create(&supercia_tid, NULL, askSUPERCIA, NULL);
+        sleep(timeout);
+        sem_wait(&counterMutex);
+        if(responseCounter < 3){
+            printf("An agency failed to respond, retrying...\n");
+            pthread_cancel(sri_tid);
+            pthread_cancel(senae_tid);
+            pthread_cancel(supercia_tid);
+            rollback();
+            responseCounter = 0;
+        }
+        else{
+            attended = true;
+            pthread_join(sri_tid, NULL);
+            pthread_join(senae_tid, NULL);
+            pthread_join(supercia_tid, NULL);
+        }
+        sem_post(&counterMutex);
+    }while(!attended);
+    return NULL;
+}
+
+void askAgency(int connfd, char *response){
+    printf("Started a request\n");
     write(connfd, &(myBoat->type), sizeof(BoatType));
     write(connfd, &(myBoat->avg_weight), sizeof(float));
     int dest_length = strlen(myBoat->destination);
     write(connfd, &(dest_length), sizeof(int));
     write(connfd, myBoat->destination, dest_length);
-    char *response = (char *)malloc(5*sizeof(char));
     ssize_t bytes_read = read(connfd, response, 5);
-    // AQUI LANZAR UNA SENAL PARA NOTIFICAR QUE LLEGO LA RESPUESTA
+    sem_wait(&counterMutex);
     response[bytes_read] = '\0';
-    // HACER QUE LAS AGENCIAS ESPEREN OTRO MENSAJE DE ECUAFAST PARA HACER COMMIT A LA INSERCION DEL NUEVO BARCO EN SUS ESTRUCTURAS,
-    // EL COMMIT SE ENVIA SI SE LANZARON LAS 3 SENALES DE RESPUESTA RECIBIDA,
-    // CASO CONTRARIO SE ENVIA UN ROLLBACK
-    close(connfd);
-    return response;
+}
+
+void rollback(){
+    if(connections->srifd > -1){
+        write(connections->srifd, "ROLLBK", 6);
+        close(connections->srifd);
+    }
+    if(connections->senaefd > -1){
+        write(connections->senaefd, "ROLLBK", 6);
+        close(connections->senaefd);
+    }
+    if(connections->superciafd > -1){
+        write(connections->superciafd, "ROLLBK", 6);
+        close(connections->superciafd);
+    }
+}
+
+void commit(){
+    if(connections->srifd > -1){
+        write(connections->srifd, "COMMIT", 6);
+        close(connections->srifd);
+    }
+    if(connections->senaefd > -1){
+        write(connections->senaefd, "COMMIT", 6);
+        close(connections->senaefd);
+    }
+    if(connections->superciafd > -1){
+        write(connections->superciafd, "COMMIT", 6);
+        close(connections->superciafd);
+    }
 }

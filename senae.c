@@ -1,9 +1,13 @@
+#define _GNU_SOURCE
 #include "common.h"
 #include "boat.h"
 #include <pthread.h>
 #include <semaphore.h>
 #include "heap.h"
 #include <math.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
 
 #define EPSILON 1e-9
 
@@ -19,6 +23,7 @@ SENAEBuffer *buffer;
 void *workerThread(void *arg);
 double get3rdQuartile(SENAEBuffer *buffer);
 void rebalanceHeaps(SENAEBuffer *buffer);
+void sigpipe_handler(int);
 
 int main(int argc, char* argv[]){
     buffer = (SENAEBuffer *)malloc(sizeof(SENAEBuffer));
@@ -55,17 +60,28 @@ void *workerThread(void *arg){
     pthread_detach(pthread_self());
     int connfd = *(int *)arg;
     free(arg);
+    struct sigaction sa;
+    sa.sa_handler = sigpipe_handler;
+    sa.sa_flags = 0; // No special flags
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGPIPE, &sa, NULL) == -1) {
+        perror("sigaction");
+        pthread_exit(NULL);
+    }
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
+    bool checkBoat = false;
+    char *transaction = (char *)malloc(7*sizeof(char));
+    transaction[0] = '\0';
+    
     read(connfd, &(currentBoat->type), sizeof(BoatType));
     read(connfd, &(currentBoat->avg_weight), sizeof(float));
     read(connfd, &dest_length, sizeof(int));
     currentBoat->destination = (char *)malloc((dest_length + 1)*sizeof(char));
     read(connfd, currentBoat->destination, dest_length);
     currentBoat->destination[dest_length] = '\0';
-
-    bool checkBoat = false;
-
+    printf("Type: %d, avg weight: %f, destination: %s, flag: %d\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination, checkBoat);
+    
     sem_wait(&(buffer->mutex));
     double thirdQ = get3rdQuartile(buffer);
     printf("[");
@@ -74,9 +90,29 @@ void *workerThread(void *arg){
     printf("]\n");
     printf("Q3: %f\n", thirdQ);
     bool overweight  = (currentBoat->avg_weight - thirdQ) > EPSILON;
+    sem_post(&(buffer->mutex));
     bool isPanamax = currentBoat->type == PANAMAX;
     bool toTarget = strcmp(currentBoat->destination, "usa") == 0 || strcmp(currentBoat->destination, "europa") == 0 || strcmp(currentBoat->destination, "europe") == 0;
     checkBoat = overweight && isPanamax && toTarget;
+    sleep(1.8);
+    if(checkBoat){
+        write(connfd, "CHECK", 5);
+    }
+    else{
+        write(connfd, "PASS", 4);
+    }
+    printf("Sent response to boat.\n");
+    read(connfd, transaction, 6);
+    transaction[7] = '\0';
+    
+    if(strcmp(transaction, "COMMIT") != 0){
+        printf("Discarding...\n");
+        close(connfd);
+        free(currentBoat->destination);
+        free(currentBoat);
+        pthread_exit(NULL);
+    }
+    sem_wait(&(buffer->mutex));
     if (!isEmpty(buffer->minHeap) && currentBoat->avg_weight >= peek(buffer->minHeap)) {
         insert(buffer->minHeap, currentBoat->avg_weight);
     } else {
@@ -85,15 +121,8 @@ void *workerThread(void *arg){
     rebalanceHeaps(buffer);
     buffer->totalSize++;
     sem_post(&(buffer->mutex));
+    printf("New data buffered.\n");
 
-    if(checkBoat){
-        write(connfd, "CHECK", 5);
-    }
-    else{
-        write(connfd, "PASS", 4);
-    }
-    printf("Type: %d, avg weight: %f, destination: %s, flag: %d\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination, checkBoat);
-    
     close(connfd);
     free(currentBoat->destination);
     free(currentBoat);
@@ -123,4 +152,9 @@ void rebalanceHeaps(SENAEBuffer *buffer){
         int root = pop(buffer->minHeap);
         insert(buffer->maxHeap, root);
     }
+}
+
+void sigpipe_handler(int signum) {
+    printf("Thread received SIGPIPE, exiting...\n");
+    pthread_exit(NULL); // Terminate the thread
 }
