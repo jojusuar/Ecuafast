@@ -5,6 +5,6 @@ typedef enum BoatType{
 
 typedef struct Boat{
     BoatType type;
-    float avg_weight;
+    double avg_weight;
     char *destination;
 }Boat;

@@ -5,7 +5,7 @@ Heap *newHeap(bool isMax)
     Heap *heap = (Heap *)malloc(sizeof(Heap));
     heap->size = 0;
     heap->max_capacity = INITIAL_SIZE;
-    heap->data = (int *)malloc(INITIAL_SIZE * sizeof(int));
+    heap->data = (double *)malloc(INITIAL_SIZE * sizeof(double));
     heap->isMax = isMax;
     return heap;
 }
@@ -29,13 +29,13 @@ bool isEmpty(Heap *heap)
 void addCapacity(Heap *heap)
 {
     heap->max_capacity *= 2;
-    heap->data = (int *)realloc(heap->data, heap->max_capacity * sizeof(int));
+    heap->data = (double *)realloc(heap->data, heap->max_capacity * sizeof(double));
 }
 
 
-void swap(int *a, int *b)
+void swap(double *a, double *b)
 {
-    int temp = *a;
+    double temp = *a;
     *a = *b;
     *b = temp;
 }
@@ -44,7 +44,7 @@ void swap(int *a, int *b)
 void bubbleUp(Heap *heap, int index)
 {
     int parent = (index - 1) / 2;
-    while (index > 0 && ((!heap->isMax && heap->data[index] < heap->data[parent]) || (heap->isMax && heap->data[index] > heap->data[parent])))
+    while (index > 0 && ((!heap->isMax && ((heap->data[index] - heap->data[parent]) < EPSILON)) || (heap->isMax && ((heap->data[index] - heap->data[parent]) > EPSILON))))
     {
         swap(&heap->data[index], &heap->data[parent]);
         index = parent;
@@ -53,7 +53,7 @@ void bubbleUp(Heap *heap, int index)
 }
 
 
-void insert(Heap *heap, int value)
+void insert(Heap *heap, double value)
 {
     if (isFull(heap))
     {
@@ -75,11 +75,11 @@ void bubbleDown(Heap *heap, int index)
         if (heap->isMax)
         {
             biggest = index;
-            if(leftChild < heap->size && heap->data[leftChild] > heap->data[biggest])
+            if(leftChild < heap->size && (EPSILON > (heap->data[biggest] - heap->data[leftChild])))
             {
                 biggest = leftChild;
             }
-            if(rightChild < heap->size && heap->data[rightChild] > heap->data[biggest])
+            if(rightChild < heap->size && (EPSILON > (heap->data[biggest] - heap->data[rightChild])))
             {
                 biggest = rightChild;
             }
@@ -96,11 +96,11 @@ void bubbleDown(Heap *heap, int index)
         else
         {
             smallest = index;
-            if (leftChild < heap->size && heap->data[leftChild] < heap->data[smallest])
+            if (leftChild < heap->size && ((heap->data[leftChild] - heap->data[smallest]) < EPSILON))
             {
                 smallest = leftChild;
             }
-            if (rightChild < heap->size && heap->data[rightChild] < heap->data[smallest])
+            if (rightChild < heap->size && ((heap->data[rightChild] -heap->data[smallest]) < EPSILON))
             {
                 smallest = rightChild;
             }
@@ -118,21 +118,21 @@ void bubbleDown(Heap *heap, int index)
 }
 
 
-int pop(Heap *heap)
+double pop(Heap *heap)
 {
     if (heap->size == 0)
     {
         printf("Heap is empty!\n");
         return -1;
     }
-    int root = heap->data[0];
+    double root = heap->data[0];
     heap->data[0] = heap->data[heap->size - 1];
     heap->size--;
     bubbleDown(heap, 0);
     return root;
 }
 
-int peek(Heap *heap)
+double peek(Heap *heap)
 {
     if (heap->size == 0)
     {
@@ -147,7 +147,7 @@ void printHeap(Heap *heap)
 {
     for (int i = 0; i < heap->size; i++)
     {
-        printf("%d ", heap->data[i]);
+        printf("%.2f ", heap->data[i]);
     }
     printf("\n");
 }

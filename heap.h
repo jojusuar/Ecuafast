@@ -2,14 +2,16 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 
 #define INITIAL_SIZE 100
+#define EPSILON 1e-9
 
 typedef struct
 {
     int size;
     int max_capacity;
-    int *data;
+    double *data;
     bool isMax;
 } Heap;
 
@@ -23,16 +25,16 @@ bool isEmpty(Heap *heap);
 
 void addCapacity(Heap *heap);
 
-void swap(int *a, int *b);
+void swap(double *a, double *b);
 
 void bubbleUp(Heap *heap, int index);
 
-void insert(Heap *heap, int value);
+void insert(Heap *heap, double value);
 
 void bubbleDown(Heap *heap, int index);
 
-int pop(Heap *heap);
+double pop(Heap *heap);
 
-int peek(Heap *heap);
+double peek(Heap *heap);
 
 void printHeap(Heap *heap);

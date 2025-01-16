@@ -90,7 +90,7 @@ int main(int argc, char* argv[]){
     if (listenfd < 0){
 		connection_error(listenfd);
     }
-    printf("Server listening on port %s.\n", port);
+    printf("Server listening on port %s.\n  Press Ctrl+C to quit safely.\n", port);
     pthread_t tid;
     while(true){
         clientlen = sizeof(clientaddr);
@@ -114,24 +114,23 @@ void *workerThread(void *arg){
         perror("sigaction");
         pthread_exit(NULL);
     }
-    int latency = min_latency + rand() % (max_latency - min_latency + 1);
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
-    bool checkBoat;
     char *transaction = (char *)malloc(7*sizeof(char));
     transaction[0] = '\0';
     
     read(connfd, &(currentBoat->type), sizeof(BoatType));
-    read(connfd, &(currentBoat->avg_weight), sizeof(float));
+    read(connfd, &(currentBoat->avg_weight), sizeof(double));
     read(connfd, &dest_length, sizeof(int));
     currentBoat->destination = (char *)malloc((dest_length + 1)*sizeof(char));
     read(connfd, currentBoat->destination, dest_length);
     currentBoat->destination[dest_length] = '\0';
-
-    printf("Type: %d, avg weight: %f, destination: %s, flag: %d\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination, checkBoat);
+    printf("\n*******************************************************\n");
+    printf("Boat just arrived. Type: %d, avg weight: %f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);
 
     int random_int = rand() % 100;
-    checkBoat = (currentBoat->type == PANAMAX && random_int < 50) || (currentBoat->type == CONVENTIONAL && random_int < 30);
+    bool checkBoat = (currentBoat->type == PANAMAX && random_int < 50) || (currentBoat->type == CONVENTIONAL && random_int < 30);
+    int latency = min_latency + rand() % (max_latency - min_latency + 1);
     sleep(latency); //simulate response latency
     if(checkBoat){
         write(connfd, "CHECK", 5);

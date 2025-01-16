@@ -107,7 +107,7 @@ int main(int argc, char* argv[]){
     if (listenfd < 0){
 		connection_error(listenfd);
     }
-    printf("Server listening on port %s.\n", port);
+    printf("Server listening on port %s.\n  Press Ctrl+C to quit safely.\n", port);
     pthread_t tid;
     while(true){
         clientlen = sizeof(clientaddr);
@@ -134,33 +134,33 @@ void *workerThread(void *arg){
         perror("sigaction");
         pthread_exit(NULL);
     }
-    int latency = min_latency + rand() % (max_latency - min_latency + 1);
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
-    bool checkBoat = false;
     char *transaction = (char *)malloc(7*sizeof(char));
     transaction[0] = '\0';
     
     read(connfd, &(currentBoat->type), sizeof(BoatType));
-    read(connfd, &(currentBoat->avg_weight), sizeof(float));
+    read(connfd, &(currentBoat->avg_weight), sizeof(double));
     read(connfd, &dest_length, sizeof(int));
     currentBoat->destination = (char *)malloc((dest_length + 1)*sizeof(char));
     read(connfd, currentBoat->destination, dest_length);
     currentBoat->destination[dest_length] = '\0';
-    printf("Type: %d, avg weight: %f, destination: %s, flag: %d\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination, checkBoat);
+    printf("\n*******************************************************\n");
+    printf("Boat just arrived. Type: %d, avg weight: %.2f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);
     
     sem_wait(&(buffer->mutex));
     double thirdQ = get3rdQuartile(buffer);
-    printf("[");
+    printf("minHeap (top 25%%): ");
     printHeap(buffer->minHeap);
+    printf("maxHeap (bottom 75%%): ");
     printHeap(buffer->maxHeap);
-    printf("]\n");
     printf("Q3: %f\n", thirdQ);
     bool overweight  = (currentBoat->avg_weight - thirdQ) > EPSILON;
     sem_post(&(buffer->mutex));
     bool isPanamax = currentBoat->type == PANAMAX;
     bool toTarget = strcmp(currentBoat->destination, "usa") == 0 || strcmp(currentBoat->destination, "europa") == 0 || strcmp(currentBoat->destination, "europe") == 0;
-    checkBoat = overweight && isPanamax && toTarget;
+    bool checkBoat = overweight && isPanamax && toTarget;
+    int latency = min_latency + rand() % (max_latency - min_latency + 1);
     sleep(latency); //simulate response latency
     if(checkBoat){
         write(connfd, "CHECK", 5);
@@ -180,7 +180,7 @@ void *workerThread(void *arg){
         pthread_exit(NULL);
     }
     sem_wait(&(buffer->mutex));
-    if (!isEmpty(buffer->minHeap) && currentBoat->avg_weight >= peek(buffer->minHeap)) {
+    if (!isEmpty(buffer->minHeap) &&  (EPSILON >= (peek(buffer->minHeap) - currentBoat->avg_weight))) {
         insert(buffer->minHeap, currentBoat->avg_weight);
     } else {
         insert(buffer->maxHeap, currentBoat->avg_weight);
@@ -201,22 +201,24 @@ double get3rdQuartile(SENAEBuffer *buffer){
     if(buffer->totalSize < 3){
         return -1;
     }
-    double ponderation = 0.75 * (buffer->totalSize + 1);
-    if(ponderation >= (buffer->maxHeap->size + 1)){
+    double position = 0.75 * (buffer->totalSize + 1) - 1;
+    printf("maxHeap size = %d, minHeap size = %d\n ", buffer->maxHeap->size, buffer->minHeap->size);
+    printf("Q3 position = %.2f\n", position);
+    if(position >= buffer->maxHeap->size){
         return peek(buffer->minHeap);
     }
-    double decimal = ponderation - (int)ponderation;
+    double decimal = position - (int)position;
     return peek(buffer->maxHeap) + decimal * (peek(buffer->minHeap) - peek(buffer->maxHeap));
 }
 
 
 void rebalanceHeaps(SENAEBuffer *buffer){
     while (buffer->maxHeap->size > ((buffer->totalSize + 1) * 3 / 4)) {
-        int root = pop(buffer->maxHeap);
+        double root = pop(buffer->maxHeap);
         insert(buffer->minHeap, root);
     }
     while (buffer->minHeap->size > ((buffer->totalSize + 1) / 4)) {
-        int root = pop(buffer->minHeap);
+        double root = pop(buffer->minHeap);
         insert(buffer->maxHeap, root);
     }
 }

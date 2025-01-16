@@ -227,6 +227,7 @@ void *askSUPERCIA()
 
 
 void *startTimeout(){
+    pthread_detach(pthread_self());
     bool attended = false;
     do{
         pthread_create(&sri_tid, NULL, askSRI, NULL);
@@ -256,7 +257,7 @@ void *startTimeout(){
 void askAgency(int connfd, char *response){
     printf("Started a request\n");
     write(connfd, &(myBoat->type), sizeof(BoatType));
-    write(connfd, &(myBoat->avg_weight), sizeof(float));
+    write(connfd, &(myBoat->avg_weight), sizeof(double));
     int dest_length = strlen(myBoat->destination);
     write(connfd, &(dest_length), sizeof(int));
     write(connfd, myBoat->destination, dest_length);
