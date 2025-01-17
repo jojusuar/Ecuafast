@@ -67,7 +67,7 @@ void swap(double *a, double *b)
 void bubbleUp(Heap *heap, int index)
 {
     int parent = (index - 1) / 2;
-    while (index > 0 && ((!heap->isMax && ((heap->data[index] - heap->data[parent]) < EPSILON)) || (heap->isMax && (EPSILON > (heap->data[parent] - heap->data[index])))))
+    while (index > 0 && ((!heap->isMax && ((heap->data[index] < heap->data[parent])) || (heap->isMax && (heap->data[index] > heap->data[parent])))))
     {
         swap(&heap->data[index], &heap->data[parent]);
         index = parent;
@@ -96,11 +96,11 @@ void bubbleDown(Heap *heap, int index)
         if (heap->isMax)
         {
             biggest = index;
-            if (leftChild < heap->size && (EPSILON > (heap->data[biggest] - heap->data[leftChild])))
+            if (leftChild < heap->size && (heap->data[leftChild] > heap->data[biggest]))
             {
                 biggest = leftChild;
             }
-            if (rightChild < heap->size && (EPSILON > (heap->data[biggest] - heap->data[rightChild])))
+            if (rightChild < heap->size && (heap->data[rightChild] > heap->data[biggest]))
             {
                 biggest = rightChild;
             }
@@ -117,11 +117,11 @@ void bubbleDown(Heap *heap, int index)
         else
         {
             smallest = index;
-            if (leftChild < heap->size && ((heap->data[leftChild] - heap->data[smallest]) < EPSILON))
+            if (leftChild < heap->size && (heap->data[leftChild] < heap->data[smallest]))
             {
                 smallest = leftChild;
             }
-            if (rightChild < heap->size && ((heap->data[rightChild] - heap->data[smallest]) < EPSILON))
+            if (rightChild < heap->size && (heap->data[rightChild] < heap->data[smallest]))
             {
                 smallest = rightChild;
             }

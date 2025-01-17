@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <sys/mman.h>
+#include <time.h>
 
 
 #define EPSILON 1e-9
@@ -83,6 +84,7 @@ int main(int argc, char* argv[]){
         fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
         return 1;
     }
+    srand((unsigned int)time(NULL));
 
     bool cleanweights = access(WEIGHTS_FILE, F_OK) != 0;
     int weightsfd = open(WEIGHTS_FILE, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);

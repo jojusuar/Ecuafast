@@ -42,6 +42,7 @@ char sriResult[6], senaeResult[6], superciaResult[6];
 
 int main(int argc, char *argv[])
 {
+    printf("Starting...\n");
     char *cvalue = NULL;
     char *wvalue = NULL;
     char *dvalue = NULL;
