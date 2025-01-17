@@ -103,6 +103,8 @@ void *workerThread(void *arg){
     pthread_detach(pthread_self());
     int connfd = *(int *)arg;
     free(arg);
+    srand((unsigned int)time(NULL) ^ (unsigned int)pthread_self());
+
     struct sigaction sa;
     sa.sa_handler = sigpipe_handler;
     sa.sa_flags = 0; // No special flags
@@ -111,6 +113,7 @@ void *workerThread(void *arg){
         perror("sigaction");
         pthread_exit(NULL);
     }
+    
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
     char *transaction = (char *)malloc(7*sizeof(char));

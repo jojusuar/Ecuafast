@@ -84,7 +84,6 @@ int main(int argc, char* argv[]){
         fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
         return 1;
     }
-    srand((unsigned int)time(NULL));
 
     bool cleanbuffer = access(BUFFER_FILE, F_OK) != 0;
     int bufferfd = open(BUFFER_FILE, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -136,6 +135,7 @@ void *workerThread(void *arg){
     pthread_detach(pthread_self());
     int connfd = *(int *)arg;
     free(arg);
+    srand((unsigned int)time(NULL) ^ (unsigned int)pthread_self());
     struct sigaction sa;
     sa.sa_handler = sigpipe_handler;
     sa.sa_flags = 0; // No special flags
