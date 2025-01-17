@@ -1,18 +1,18 @@
-#define _GNU_SOURCE
 #include "common.h"
 #include "boat.h"
 #include <pthread.h>
 #include <semaphore.h>
 #include <math.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <signal.h>
-#include <string.h>
 #include <getopt.h>
+#include <fcntl.h>
 #include <ctype.h>
+#include <sys/mman.h>
+
 
 #define EPSILON 1e-9
 #define WEIGHTS_BUFFERSIZE 20
+#define WEIGHTS_FILE "data/sri/weights.bin"
 
 void *workerThread(void *);
 void sigpipe_handler(int);
@@ -24,10 +24,10 @@ typedef struct WeightBuffer{
     double current_avg;
     int full;
     double item_ponderation;
-    sem_t *mutex;
 }WeightBuffer;
 
 WeightBuffer *weights;
+sem_t *mutex;
 int min_latency;
 int max_latency;
 
@@ -84,12 +84,19 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    weights = (WeightBuffer *)malloc(sizeof(WeightBuffer));
-    weights->full = 0;
-    weights->current_avg = -1;
-    weights->item_ponderation = 1 / (double) WEIGHTS_BUFFERSIZE;
-    weights->mutex = (sem_t *)malloc(sizeof(sem_t));
-    sem_init(weights->mutex, 0, 1);
+    bool cleanweights = access(WEIGHTS_FILE, F_OK) != 0;
+    int weightsfd = open(WEIGHTS_FILE, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    ftruncate(weightsfd, sizeof(WeightBuffer));
+    weights = (WeightBuffer *)mmap(NULL, sizeof(WeightBuffer), PROT_READ | PROT_WRITE, MAP_SHARED, weightsfd, 0);
+    close(weightsfd);
+    if(cleanweights){
+        weights->index = 0;
+        weights->full = 0;
+        weights->current_avg = -1;
+        weights->item_ponderation = 1 / (double) WEIGHTS_BUFFERSIZE;
+    }
+    mutex = (sem_t *)malloc(sizeof(sem_t));
+    sem_init(mutex, 0, 1);
 
     struct sigaction sigintAction;
     sigintAction.sa_handler = sigint_handler;
@@ -117,9 +124,6 @@ int main(int argc, char* argv[]){
 		*connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
         pthread_create(&tid, NULL, workerThread, (void *)connfd);
     }
-    sem_destroy(weights->mutex);
-    free(weights->mutex);
-    free(weights);
     return 0;
 }
 
@@ -149,13 +153,13 @@ void *workerThread(void *arg){
     printf("\n*******************************************************\n");
     printf("Boat just arrived. Type: %d, avg weight: %f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);
 
-    sem_wait(weights->mutex);
+    sem_wait(mutex);
     printf("Current avg = %f\n", weights->current_avg);
     bool isConventional = currentBoat->type == CONVENTIONAL;
     bool toEcuador = strcmp(currentBoat->destination, "ecuador") == 0;
     bool exceedsWeight = (currentBoat->avg_weight - weights->current_avg) > EPSILON;
     bool checkBoat = isConventional && toEcuador && exceedsWeight;
-    sem_post(weights->mutex);
+    sem_post(mutex);
     int latency = min_latency + rand() % (max_latency - min_latency + 1);
     sleep(latency); //simulate response latency
     if(checkBoat){
@@ -175,7 +179,7 @@ void *workerThread(void *arg){
         free(currentBoat);
         pthread_exit(NULL);
     }
-    sem_wait(weights->mutex);
+    sem_wait(mutex);
     if(weights->full == 0){
         weights->current_avg = currentBoat->avg_weight;
         weights->full++;
@@ -184,12 +188,12 @@ void *workerThread(void *arg){
         weights->current_avg = (weights->current_avg * weights->full + currentBoat->avg_weight)/(weights->full + 1);
         weights->full++;
     }
-    else{ //fast as hell recalculation
+    else{
         weights->current_avg = weights->current_avg + weights->item_ponderation * (currentBoat->avg_weight - weights->array[weights->index]);
     }
     weights->array[weights->index] = currentBoat->avg_weight;
     weights->index = (weights->index + 1) % WEIGHTS_BUFFERSIZE;
-    sem_post(weights->mutex);
+    sem_post(mutex);
     printf("New data saved.\n");
 
     close(connfd);
@@ -205,8 +209,9 @@ void sigpipe_handler(int signum) {
 
 void sigint_handler(int signum) {
     printf("Closing gracefully...\n");
-    sem_destroy(weights->mutex);
-    free(weights->mutex);
-    free(weights);
+    sem_destroy(mutex);
+    free(mutex);
+    msync(weights, sizeof(WeightBuffer), MS_SYNC);
+    munmap(weights, sizeof(WeightBuffer));
     exit(0);
 }

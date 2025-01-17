@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
@@ -153,7 +152,7 @@ int main(int argc, char *argv[])
 
     struct sigaction sa;
     sa.sa_handler = handle_sigint;
-    sa.sa_flags = 0; // No special flags
+    sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
     if (sigaction(SIGINT, &sa, NULL) == -1) {
         perror("sigaction");

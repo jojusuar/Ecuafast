@@ -1,21 +1,15 @@
-#define _GNU_SOURCE
 #include "common.h"
 #include "boat.h"
 #include <pthread.h>
 #include <semaphore.h>
 #include "heap.h"
 #include <math.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <signal.h>
 #include <getopt.h>
 #include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <signal.h>
 
 #define EPSILON 1e-9
 #define BUFFER_FILE "data/senae/buffer.bin"
@@ -92,15 +86,10 @@ int main(int argc, char* argv[]){
 
     bool cleanbuffer = access(BUFFER_FILE, F_OK) != 0;
     int bufferfd = open(BUFFER_FILE, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-    if (ftruncate(bufferfd, sizeof(SENAEBuffer)) == -1)
-    {
-        perror("Failed to struct file");
-        close(bufferfd);
-        return 1;
-    }
+    ftruncate(bufferfd, sizeof(SENAEBuffer));
     buffer = (SENAEBuffer *)mmap(NULL, sizeof(SENAEBuffer), PROT_READ | PROT_WRITE, MAP_SHARED, bufferfd, 0);
     if(cleanbuffer){
-        buffer = (SENAEBuffer *)malloc(sizeof(SENAEBuffer));
+        buffer->totalSize = 0;
     }
     close(bufferfd);
     
@@ -110,7 +99,7 @@ int main(int argc, char* argv[]){
 
     struct sigaction sigintAction;
     sigintAction.sa_handler = sigint_handler;
-    sigintAction.sa_flags = 0; // No special flags
+    sigintAction.sa_flags = 0;
     sigemptyset(&sigintAction.sa_mask);
     if (sigaction(SIGINT, &sigintAction, NULL) == -1) {
         perror("sigaction");
@@ -244,6 +233,7 @@ void rebalanceHeaps(SENAEBuffer *buffer){
 
 void sigpipe_handler(int signum) {
     printf("Thread received SIGPIPE, exiting...\n");
+    sem_post(&mutex);
     pthread_exit(NULL);
 }
 

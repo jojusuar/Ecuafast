@@ -4,14 +4,10 @@ Heap *newHeap(bool isMax)
 {
     char *heapfile = isMax ? MAXHEAP_STRUCT : MINHEAP_STRUCT;
     bool cleanstruct = access(heapfile, F_OK) != 0;
-    int structFd = open(heapfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-    if (ftruncate(structFd, sizeof(Heap)) == -1)
-    {
-        perror("Failed to struct file");
-        close(structFd);
-        return NULL;
-    }
-    Heap *heap = (Heap *)mmap(NULL, sizeof(Heap), PROT_READ | PROT_WRITE, MAP_SHARED, structFd, 0);
+    int structfd = open(heapfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    ftruncate(structfd, sizeof(Heap));
+    Heap *heap = (Heap *)mmap(NULL, sizeof(Heap), PROT_READ | PROT_WRITE, MAP_SHARED, structfd, 0);
+    close(structfd);
     if (cleanstruct)
     {
         heap->size = 0;
@@ -20,46 +16,20 @@ Heap *newHeap(bool isMax)
     }
 
     char *datafile = isMax ? MAXHEAP_DATA : MINHEAP_DATA;
-    int dataFd = open(datafile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-    if (ftruncate(dataFd, heap->max_capacity * sizeof(double)) == -1)
-    {
-        perror("Failed to resize data file");
-        if (heap != MAP_FAILED)
-        {
-            munmap(heap, sizeof(Heap));
-        }
-        close(structFd);
-        close(dataFd);
-        return NULL;
-    }
-    heap->data = (double *)mmap(NULL, heap->max_capacity * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, dataFd, 0);
-    close(structFd);
-    close(dataFd);
+    int datafd = open(datafile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    ftruncate(datafd, heap->max_capacity * sizeof(double));
+    heap->data = (double *)mmap(NULL, heap->max_capacity * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, datafd, 0);
+    close(datafd);
     return heap;
 }
 
 void closeHeap(Heap *heap)
 {
-    if (heap == NULL)
-    {
-        return;
-    }
-    if (heap->data != MAP_FAILED)
-    {
-        if (msync(heap->data, heap->max_capacity * sizeof(double), MS_SYNC) == -1)
-        {
-            perror("Failed to sync data file");
-        }
-        munmap(heap->data, heap->max_capacity * sizeof(double));
-    }
-    if (heap != MAP_FAILED)
-    {
-        if (msync(heap, sizeof(Heap), MS_SYNC) == -1)
-        {
-            perror("Failed to sync heap structure file");
-        }
-        munmap(heap, sizeof(Heap));
-    }
+    if (heap == NULL) return;
+    msync(heap->data, heap->max_capacity * sizeof(double), MS_SYNC);
+    munmap(heap->data, heap->max_capacity * sizeof(double));
+    msync(heap, sizeof(Heap), MS_SYNC);
+    munmap(heap, sizeof(Heap));
 }
 
 bool isFull(Heap *heap)
@@ -80,20 +50,11 @@ void addCapacity(Heap *heap)
         return;
     }
     heap->max_capacity *= 2;
-    int dataFd = open(heap->isMax ? MAXHEAP_DATA : MINHEAP_DATA, O_RDWR);
-    if (ftruncate(dataFd, heap->max_capacity * sizeof(double)) == -1)
-    {
-        perror("Failed to resize data file");
-        close(dataFd);
-        return;
-    }
-    if (heap->data != MAP_FAILED)
-    {
-        munmap(heap->data, heap->size * sizeof(double));
-    }
-    heap->data = (double *)mmap(NULL, heap->max_capacity * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, dataFd, 0);
-    if (heap->data == MAP_FAILED)
-    close(dataFd);
+    int datafd = open(heap->isMax ? MAXHEAP_DATA : MINHEAP_DATA, O_RDWR);
+    ftruncate(datafd, heap->max_capacity * sizeof(double));
+    munmap(heap->data, heap->size * sizeof(double));
+    heap->data = (double *)mmap(NULL, heap->max_capacity * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, datafd, 0);
+    close(datafd);
 }
 
 void swap(double *a, double *b)

@@ -1,11 +1,8 @@
-#define _GNU_SOURCE
 #include "common.h"
 #include "boat.h"
 #include <pthread.h>
 #include <semaphore.h>
 #include <time.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <signal.h>
 #include <getopt.h>
 #include <ctype.h>
