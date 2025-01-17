@@ -190,7 +190,7 @@ void *workerThread(void *arg){
     weights->array[weights->index] = currentBoat->avg_weight;
     weights->index = (weights->index + 1) % WEIGHTS_BUFFERSIZE;
     sem_post(weights->mutex);
-    printf("New data buffered.\n");
+    printf("New data saved.\n");
 
     close(connfd);
     free(currentBoat->destination);

@@ -10,17 +10,24 @@
 #include <signal.h>
 #include <getopt.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #define EPSILON 1e-9
+#define BUFFER_FILE "data/senae/buffer.bin"
 
 typedef struct{
     Heap *minHeap;
     Heap *maxHeap;
     int totalSize;
-    sem_t mutex;
 }SENAEBuffer;
 
 SENAEBuffer *buffer;
+sem_t mutex;
 int min_latency;
 int max_latency;
 
@@ -82,12 +89,21 @@ int main(int argc, char* argv[]){
         fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
         return 1;
     }
-
-    buffer = (SENAEBuffer *)malloc(sizeof(SENAEBuffer));
-    buffer->totalSize = 0;
+    bool cleanbuffer = access(BUFFER_FILE, F_OK) != 0;
+    int bufferfd = open(BUFFER_FILE, O_RDWR | O_CREAT, 0666);
+    if (ftruncate(bufferfd, sizeof(SENAEBuffer)) == -1) {
+        perror("Failed to set buffer file size");
+        close(bufferfd);
+        return 1;
+    }
+    buffer = mmap(NULL, sizeof(SENAEBuffer), PROT_READ | PROT_WRITE, MAP_SHARED, bufferfd, 0);
+    close(bufferfd);
+    if(cleanbuffer){
+        buffer->totalSize = 0;
+    }
     buffer->minHeap = newHeap(false);
     buffer->maxHeap = newHeap(true);
-    sem_init(&(buffer->mutex), 0, 1);
+    sem_init(&mutex, 0, 1);
 
     struct sigaction sigintAction;
     sigintAction.sa_handler = sigint_handler;
@@ -115,10 +131,10 @@ int main(int argc, char* argv[]){
 		*connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
         pthread_create(&tid, NULL, workerThread, (void *)connfd);
     }
-    destroyHeap(buffer->minHeap);
-    destroyHeap(buffer->maxHeap);
-    sem_destroy(&(buffer->mutex));
-    free(buffer);
+    closeHeap(buffer->minHeap);
+    closeHeap(buffer->maxHeap);
+    sem_destroy(&mutex);
+    munmap(buffer, sizeof(SENAEBuffer));
     return 0;
 }
 
@@ -148,7 +164,7 @@ void *workerThread(void *arg){
     printf("\n*******************************************************\n");
     printf("Boat just arrived. Type: %d, avg weight: %.2f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);
     
-    sem_wait(&(buffer->mutex));
+    sem_wait(&mutex);
     double thirdQ = get3rdQuartile(buffer);
     printf("minHeap (top 25%%): ");
     printHeap(buffer->minHeap);
@@ -156,7 +172,7 @@ void *workerThread(void *arg){
     printHeap(buffer->maxHeap);
     printf("Q3: %f\n", thirdQ);
     bool overweight  = (currentBoat->avg_weight - thirdQ) > EPSILON;
-    sem_post(&(buffer->mutex));
+    sem_post(&mutex);
     bool isPanamax = currentBoat->type == PANAMAX;
     bool toTarget = strcmp(currentBoat->destination, "usa") == 0 || strcmp(currentBoat->destination, "europa") == 0 || strcmp(currentBoat->destination, "europe") == 0;
     bool checkBoat = overweight && isPanamax && toTarget;
@@ -179,7 +195,7 @@ void *workerThread(void *arg){
         free(currentBoat);
         pthread_exit(NULL);
     }
-    sem_wait(&(buffer->mutex));
+    sem_wait(&mutex);
     if (!isEmpty(buffer->minHeap) &&  (EPSILON >= (peek(buffer->minHeap) - currentBoat->avg_weight))) {
         insert(buffer->minHeap, currentBoat->avg_weight);
     } else {
@@ -187,8 +203,8 @@ void *workerThread(void *arg){
     }
     rebalanceHeaps(buffer);
     buffer->totalSize++;
-    sem_post(&(buffer->mutex));
-    printf("New data buffered.\n");
+    sem_post(&mutex);
+    printf("New data saved.\n");
 
     close(connfd);
     free(currentBoat->destination);
@@ -230,9 +246,9 @@ void sigpipe_handler(int signum) {
 
 void sigint_handler(int signum) {
     printf("Closing gracefully...\n");
-    destroyHeap(buffer->minHeap);
-    destroyHeap(buffer->maxHeap);
-    sem_destroy(&(buffer->mutex));
-    free(buffer);
+    closeHeap(buffer->minHeap);
+    closeHeap(buffer->maxHeap);
+    sem_destroy(&mutex);
+    munmap(buffer, sizeof(SENAEBuffer));
     exit(0);
 }

@@ -1,19 +1,42 @@
 #include "heap.h"
 
 Heap *newHeap(bool isMax)
-{
-    Heap *heap = (Heap *)malloc(sizeof(Heap));
-    heap->size = 0;
-    heap->max_capacity = INITIAL_SIZE;
-    heap->data = (double *)malloc(INITIAL_SIZE * sizeof(double));
-    heap->isMax = isMax;
+{   
+    char *heapfile = isMax ? MAXHEAP_STRUCT : MINHEAP_STRUCT;
+    bool cleanstruct = access(heapfile, F_OK) != 0;
+    int structfd = open(heapfile, O_RDWR | O_CREAT, 0666);
+    if (ftruncate(structfd, sizeof(Heap)) == -1) {
+        perror("Failed to set heap struct file size");
+        close(structfd);
+        return NULL;
+    }
+    Heap *heap = mmap(NULL, sizeof(Heap), PROT_READ | PROT_WRITE, MAP_SHARED, structfd, 0);
+    close(structfd); 
+    if(cleanstruct){
+        heap->size = 0;
+        heap->max_capacity = INITIAL_SIZE;
+        heap->isMax = isMax;
+    }
+    char *datafile = isMax ? MAXHEAP_DATA : MINHEAP_DATA;
+    int datafd = open(datafile, O_RDWR | O_CREAT, 0666);
+    if (ftruncate(datafd, heap->max_capacity * sizeof(double)) == -1) {
+        perror("Failed to set heap data file size");
+        close(datafd);
+        return NULL;
+    }
+    heap->data = mmap(NULL, heap->max_capacity * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, datafd, 0);
     return heap;
 }
 
-void destroyHeap(Heap *heap)
+void closeHeap(Heap *heap)
 {
-    free(heap->data);
-    free(heap);
+    if (heap == NULL) {
+        return;
+    }
+    if (heap->data != NULL) {
+        munmap(heap->data, heap->max_capacity * sizeof(double));
+    }
+    munmap(heap, sizeof(Heap));
 }
 
 bool isFull(Heap *heap)
@@ -28,8 +51,30 @@ bool isEmpty(Heap *heap)
 
 void addCapacity(Heap *heap)
 {
+   if (heap == NULL || heap->data == NULL) {
+        fprintf(stderr, "Invalid heap or data pointer.\n");
+        return;
+    }
     heap->max_capacity *= 2;
-    heap->data = (double *)realloc(heap->data, heap->max_capacity * sizeof(double));
+    const char *datafile = heap->isMax ? MAXHEAP_DATA : MINHEAP_DATA;
+    int datafd = open(datafile, O_RDWR);
+    if (datafd == -1) {
+        perror("Failed to open data file for resizing");
+        return;
+    }
+    if (ftruncate(datafd, heap->max_capacity * sizeof(double)) == -1) {
+        perror("Failed to resize data file");
+        close(datafd);
+        return;
+    }
+    heap->data = mremap(heap->data, (heap->max_capacity / 2) * sizeof(double), 
+                        heap->max_capacity * sizeof(double), MREMAP_MAYMOVE);
+    if (heap->data == MAP_FAILED) {
+        perror("Failed to remap data");
+        close(datafd);
+        return;
+    }
+    close(datafd);
 }
 
 

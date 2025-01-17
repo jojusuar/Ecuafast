@@ -1,11 +1,21 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/stat.h>
 
-#define INITIAL_SIZE 100
+#define INITIAL_SIZE 5
 #define EPSILON 1e-9
+#define MAXHEAP_DATA "data/senae/maxHeapData.bin"
+#define MINHEAP_DATA "data/senae/minHeapData.bin"
+#define MAXHEAP_STRUCT "data/senae/maxHeapStruct.bin"
+#define MINHEAP_STRUCT "data/senae/minHeapStruct.bin"
 
 typedef struct
 {
@@ -17,7 +27,7 @@ typedef struct
 
 Heap *newHeap(bool isMax); 
 
-void destroyHeap(Heap *heap);
+void closeHeap(Heap *heap);
 
 bool isFull(Heap *heap);
 
