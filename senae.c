@@ -89,18 +89,21 @@ int main(int argc, char* argv[]){
         fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
         return 1;
     }
+
     bool cleanbuffer = access(BUFFER_FILE, F_OK) != 0;
-    int bufferfd = open(BUFFER_FILE, O_RDWR | O_CREAT, 0666);
-    if (ftruncate(bufferfd, sizeof(SENAEBuffer)) == -1) {
-        perror("Failed to set buffer file size");
+    int bufferfd = open(BUFFER_FILE, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    if (ftruncate(bufferfd, sizeof(SENAEBuffer)) == -1)
+    {
+        perror("Failed to struct file");
         close(bufferfd);
         return 1;
     }
-    buffer = mmap(NULL, sizeof(SENAEBuffer), PROT_READ | PROT_WRITE, MAP_SHARED, bufferfd, 0);
-    close(bufferfd);
+    buffer = (SENAEBuffer *)mmap(NULL, sizeof(SENAEBuffer), PROT_READ | PROT_WRITE, MAP_SHARED, bufferfd, 0);
     if(cleanbuffer){
-        buffer->totalSize = 0;
+        buffer = (SENAEBuffer *)malloc(sizeof(SENAEBuffer));
     }
+    close(bufferfd);
+    
     buffer->minHeap = newHeap(false);
     buffer->maxHeap = newHeap(true);
     sem_init(&mutex, 0, 1);
@@ -249,6 +252,7 @@ void sigint_handler(int signum) {
     closeHeap(buffer->minHeap);
     closeHeap(buffer->maxHeap);
     sem_destroy(&mutex);
+    msync(buffer, sizeof(SENAEBuffer), MS_SYNC);
     munmap(buffer, sizeof(SENAEBuffer));
     exit(0);
 }

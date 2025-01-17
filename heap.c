@@ -1,42 +1,65 @@
 #include "heap.h"
 
 Heap *newHeap(bool isMax)
-{   
+{
     char *heapfile = isMax ? MAXHEAP_STRUCT : MINHEAP_STRUCT;
     bool cleanstruct = access(heapfile, F_OK) != 0;
-    int structfd = open(heapfile, O_RDWR | O_CREAT, 0666);
-    if (ftruncate(structfd, sizeof(Heap)) == -1) {
-        perror("Failed to set heap struct file size");
-        close(structfd);
+    int structFd = open(heapfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    if (ftruncate(structFd, sizeof(Heap)) == -1)
+    {
+        perror("Failed to struct file");
+        close(structFd);
         return NULL;
     }
-    Heap *heap = mmap(NULL, sizeof(Heap), PROT_READ | PROT_WRITE, MAP_SHARED, structfd, 0);
-    close(structfd); 
-    if(cleanstruct){
+    Heap *heap = (Heap *)mmap(NULL, sizeof(Heap), PROT_READ | PROT_WRITE, MAP_SHARED, structFd, 0);
+    if (cleanstruct)
+    {
         heap->size = 0;
         heap->max_capacity = INITIAL_SIZE;
         heap->isMax = isMax;
     }
+
     char *datafile = isMax ? MAXHEAP_DATA : MINHEAP_DATA;
-    int datafd = open(datafile, O_RDWR | O_CREAT, 0666);
-    if (ftruncate(datafd, heap->max_capacity * sizeof(double)) == -1) {
-        perror("Failed to set heap data file size");
-        close(datafd);
+    int dataFd = open(datafile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    if (ftruncate(dataFd, heap->max_capacity * sizeof(double)) == -1)
+    {
+        perror("Failed to resize data file");
+        if (heap != MAP_FAILED)
+        {
+            munmap(heap, sizeof(Heap));
+        }
+        close(structFd);
+        close(dataFd);
         return NULL;
     }
-    heap->data = mmap(NULL, heap->max_capacity * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, datafd, 0);
+    heap->data = (double *)mmap(NULL, heap->max_capacity * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, dataFd, 0);
+    close(structFd);
+    close(dataFd);
     return heap;
 }
 
 void closeHeap(Heap *heap)
 {
-    if (heap == NULL) {
+    if (heap == NULL)
+    {
         return;
     }
-    if (heap->data != NULL) {
+    if (heap->data != MAP_FAILED)
+    {
+        if (msync(heap->data, heap->max_capacity * sizeof(double), MS_SYNC) == -1)
+        {
+            perror("Failed to sync data file");
+        }
         munmap(heap->data, heap->max_capacity * sizeof(double));
     }
-    munmap(heap, sizeof(Heap));
+    if (heap != MAP_FAILED)
+    {
+        if (msync(heap, sizeof(Heap), MS_SYNC) == -1)
+        {
+            perror("Failed to sync heap structure file");
+        }
+        munmap(heap, sizeof(Heap));
+    }
 }
 
 bool isFull(Heap *heap)
@@ -51,32 +74,27 @@ bool isEmpty(Heap *heap)
 
 void addCapacity(Heap *heap)
 {
-   if (heap == NULL || heap->data == NULL) {
+    if (heap == NULL || heap->data == NULL)
+    {
         fprintf(stderr, "Invalid heap or data pointer.\n");
         return;
     }
     heap->max_capacity *= 2;
-    const char *datafile = heap->isMax ? MAXHEAP_DATA : MINHEAP_DATA;
-    int datafd = open(datafile, O_RDWR);
-    if (datafd == -1) {
-        perror("Failed to open data file for resizing");
-        return;
-    }
-    if (ftruncate(datafd, heap->max_capacity * sizeof(double)) == -1) {
+    int dataFd = open(heap->isMax ? MAXHEAP_DATA : MINHEAP_DATA, O_RDWR);
+    if (ftruncate(dataFd, heap->max_capacity * sizeof(double)) == -1)
+    {
         perror("Failed to resize data file");
-        close(datafd);
+        close(dataFd);
         return;
     }
-    heap->data = mremap(heap->data, (heap->max_capacity / 2) * sizeof(double), 
-                        heap->max_capacity * sizeof(double), MREMAP_MAYMOVE);
-    if (heap->data == MAP_FAILED) {
-        perror("Failed to remap data");
-        close(datafd);
-        return;
+    if (heap->data != MAP_FAILED)
+    {
+        munmap(heap->data, heap->size * sizeof(double));
     }
-    close(datafd);
+    heap->data = (double *)mmap(NULL, heap->max_capacity * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, dataFd, 0);
+    if (heap->data == MAP_FAILED)
+    close(dataFd);
 }
-
 
 void swap(double *a, double *b)
 {
@@ -84,7 +102,6 @@ void swap(double *a, double *b)
     *a = *b;
     *b = temp;
 }
-
 
 void bubbleUp(Heap *heap, int index)
 {
@@ -97,18 +114,16 @@ void bubbleUp(Heap *heap, int index)
     }
 }
 
-
 void insert(Heap *heap, double value)
 {
     if (isFull(heap))
     {
         addCapacity(heap);
     }
-    heap->data[heap->size] = value; 
-    bubbleUp(heap, heap->size);     
+    heap->data[heap->size] = value;
+    bubbleUp(heap, heap->size);
     heap->size++;
 }
-
 
 void bubbleDown(Heap *heap, int index)
 {
@@ -120,15 +135,15 @@ void bubbleDown(Heap *heap, int index)
         if (heap->isMax)
         {
             biggest = index;
-            if(leftChild < heap->size && (EPSILON > (heap->data[biggest] - heap->data[leftChild])))
+            if (leftChild < heap->size && (EPSILON > (heap->data[biggest] - heap->data[leftChild])))
             {
                 biggest = leftChild;
             }
-            if(rightChild < heap->size && (EPSILON > (heap->data[biggest] - heap->data[rightChild])))
+            if (rightChild < heap->size && (EPSILON > (heap->data[biggest] - heap->data[rightChild])))
             {
                 biggest = rightChild;
             }
-            if(biggest != index)
+            if (biggest != index)
             {
                 swap(&heap->data[index], &heap->data[biggest]);
                 index = biggest;
@@ -162,7 +177,6 @@ void bubbleDown(Heap *heap, int index)
     }
 }
 
-
 double pop(Heap *heap)
 {
     if (heap->size == 0)
@@ -186,7 +200,6 @@ double peek(Heap *heap)
     }
     return heap->data[0];
 }
-
 
 void printHeap(Heap *heap)
 {
