@@ -1,12 +1,11 @@
 # Prerequisites
 *.d
-
 # Object files
 *.o
 *.ko
 *.obj
 *.elf
-
+.clang-format
 # Linker output
 *.ilk
 *.map

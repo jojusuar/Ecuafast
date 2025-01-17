@@ -1,13 +1,13 @@
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <time.h>
-#include <math.h>
 #include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
+#include <math.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
 
 #define INITIAL_SIZE 5
 #define EPSILON 1e-9
@@ -16,15 +16,14 @@
 #define MAXHEAP_STRUCT "data/senae/maxHeapStruct.bin"
 #define MINHEAP_STRUCT "data/senae/minHeapStruct.bin"
 
-typedef struct
-{
-    int size;
-    int max_capacity;
-    double *data;
-    bool isMax;
+typedef struct {
+  int size;
+  int max_capacity;
+  double *data;
+  bool isMax;
 } Heap;
 
-Heap *newHeap(bool isMax); 
+Heap *newHeap(bool isMax);
 
 void closeHeap(Heap *heap);
 

@@ -1,25 +1,25 @@
-#include "common.h"
 #include "boat.h"
+#include "common.h"
+#include "heap.h"
+#include <ctype.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <math.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include "heap.h"
-#include <math.h>
-#include <getopt.h>
-#include <ctype.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <sys/stat.h>
 #include <signal.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #define EPSILON 1e-9
 #define BUFFER_FILE "data/senae/buffer.bin"
 
-typedef struct{
+typedef struct {
     Heap *minHeap;
     Heap *maxHeap;
     int totalSize;
-}SENAEBuffer;
+} SENAEBuffer;
 
 SENAEBuffer *buffer;
 sem_t mutex;
@@ -32,7 +32,7 @@ void rebalanceHeaps(SENAEBuffer *buffer);
 void sigpipe_handler(int);
 void sigint_handler(int);
 
-int main(int argc, char* argv[]){
+int main(int argc, char *argv[]) {
     char *fvalue = NULL;
     char *tvalue = NULL;
     bool fflag = false;
@@ -41,9 +41,8 @@ int main(int argc, char* argv[]){
     int c;
 
     opterr = 0;
-    while ((c = getopt (argc, argv, "f:t:")) != -1){
-        switch (c)
-        {
+    while ((c = getopt(argc, argv, "f:t:")) != -1) {
+        switch (c) {
         case 'f':
             fvalue = optarg;
             fflag = true;
@@ -53,47 +52,53 @@ int main(int argc, char* argv[]){
             tflag = true;
             break;
         case 'h':
-            printf("Usage: %s -f <response latency floor> -t <response latency top>\n", argv[0]);
+            printf("Usage: %s -f <response latency floor> -t <response latency "
+                   "top>\n",
+                   argv[0]);
             printf("    -h:             Shows this message.\n");
             return 0;
         case '?':
             if (optopt == 'f')
-            fprintf (stderr, "-%c requires an argument.\n", optopt);
+                fprintf(stderr, "-%c requires an argument.\n", optopt);
             if (optopt == 't')
-            fprintf (stderr, "-%c requires an argument.\n", optopt);
-            else if (isprint (optopt))
-            fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+                fprintf(stderr, "-%c requires an argument.\n", optopt);
+            else if (isprint(optopt))
+                fprintf(stderr, "Unknown option `-%c'.\n", optopt);
             else
-            fprintf (stderr,
-                    "Unknown option character `\\x%x'.\n",
-                    optopt);
+                fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
             return 1;
         }
     }
-    if(fflag){
+    if (fflag) {
         min_latency = atoi(fvalue);
-    }
-    else{
-        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+    } else {
+        fprintf(stderr,
+                "Usage: %s -f <response latency floor (seconds)> -t <response "
+                "latency top (seconds)>\n",
+                argv[0]);
         return 1;
     }
-    if(tflag){
+    if (tflag) {
         max_latency = atoi(tvalue);
-    }
-    else{
-        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+    } else {
+        fprintf(stderr,
+                "Usage: %s -f <response latency floor (seconds)> -t <response "
+                "latency top (seconds)>\n",
+                argv[0]);
         return 1;
     }
 
     bool cleanbuffer = access(BUFFER_FILE, F_OK) != 0;
     int bufferfd = open(BUFFER_FILE, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
     ftruncate(bufferfd, sizeof(SENAEBuffer));
-    buffer = (SENAEBuffer *)mmap(NULL, sizeof(SENAEBuffer), PROT_READ | PROT_WRITE, MAP_SHARED, bufferfd, 0);
-    if(cleanbuffer){
+    buffer =
+        (SENAEBuffer *)mmap(NULL, sizeof(SENAEBuffer), PROT_READ | PROT_WRITE,
+                            MAP_SHARED, bufferfd, 0);
+    if (cleanbuffer) {
         buffer->totalSize = 0;
     }
     close(bufferfd);
-    
+
     buffer->minHeap = newHeap(false);
     buffer->maxHeap = newHeap(true);
     sem_init(&mutex, 0, 1);
@@ -113,15 +118,16 @@ int main(int argc, char* argv[]){
     char *port = "8081";
     listenfd = open_listenfd(port);
 
-    if (listenfd < 0){
-		connection_error(listenfd);
+    if (listenfd < 0) {
+        connection_error(listenfd);
     }
-    printf("Server listening on port %s.\n  Press Ctrl+C to quit safely.\n", port);
+    printf("Server listening on port %s.\n  Press Ctrl+C to quit safely.\n",
+           port);
     pthread_t tid;
-    while(true){
+    while (true) {
         clientlen = sizeof(clientaddr);
         int *connfd = (int *)malloc(sizeof(int));
-		*connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
+        *connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
         pthread_create(&tid, NULL, workerThread, (void *)connfd);
     }
     closeHeap(buffer->minHeap);
@@ -131,7 +137,7 @@ int main(int argc, char* argv[]){
     return 0;
 }
 
-void *workerThread(void *arg){
+void *workerThread(void *arg) {
     pthread_detach(pthread_self());
     int connfd = *(int *)arg;
     free(arg);
@@ -146,18 +152,20 @@ void *workerThread(void *arg){
     }
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
-    char *transaction = (char *)malloc(7*sizeof(char));
+    char *transaction = (char *)malloc(7 * sizeof(char));
     transaction[0] = '\0';
-    
+
     read(connfd, &(currentBoat->type), sizeof(BoatType));
     read(connfd, &(currentBoat->avg_weight), sizeof(double));
     read(connfd, &dest_length, sizeof(int));
-    currentBoat->destination = (char *)malloc((dest_length + 1)*sizeof(char));
+    currentBoat->destination = (char *)malloc((dest_length + 1) * sizeof(char));
     read(connfd, currentBoat->destination, dest_length);
     currentBoat->destination[dest_length] = '\0';
     printf("\n*******************************************************\n");
-    printf("Boat just arrived. Type: %d, avg weight: %.2f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);
-    
+    printf("Boat just arrived. Type: %d, avg weight: %.2f, destination: %s\n",
+           currentBoat->type, currentBoat->avg_weight,
+           currentBoat->destination);
+
     sem_wait(&mutex);
     double thirdQ = get3rdQuartile(buffer);
     printf("minHeap (top 25%%): ");
@@ -165,24 +173,25 @@ void *workerThread(void *arg){
     printf("maxHeap (bottom 75%%): ");
     printHeap(buffer->maxHeap);
     printf("Q3: %f\n", thirdQ);
-    bool overweight  = (currentBoat->avg_weight - thirdQ) > EPSILON;
+    bool overweight = (currentBoat->avg_weight - thirdQ) > EPSILON;
     sem_post(&mutex);
     bool isPanamax = currentBoat->type == PANAMAX;
-    bool toTarget = strcmp(currentBoat->destination, "usa") == 0 || strcmp(currentBoat->destination, "europa") == 0 || strcmp(currentBoat->destination, "europe") == 0;
+    bool toTarget = strcmp(currentBoat->destination, "usa") == 0 ||
+                    strcmp(currentBoat->destination, "europa") == 0 ||
+                    strcmp(currentBoat->destination, "europe") == 0;
     bool checkBoat = overweight && isPanamax && toTarget;
     int latency = min_latency + rand() % (max_latency - min_latency + 1);
-    sleep(latency); //simulate response latency
-    if(checkBoat){
+    sleep(latency); // simulate response latency
+    if (checkBoat) {
         write(connfd, "CHECK", 5);
-    }
-    else{
+    } else {
         write(connfd, "PASS", 4);
     }
     printf("Sent response to boat.\n");
     read(connfd, transaction, 6);
     transaction[7] = '\0';
-    
-    if(strcmp(transaction, "COMMIT") != 0){
+
+    if (strcmp(transaction, "COMMIT") != 0) {
         printf("Discarding...\n");
         close(connfd);
         free(currentBoat->destination);
@@ -190,7 +199,8 @@ void *workerThread(void *arg){
         pthread_exit(NULL);
     }
     sem_wait(&mutex);
-    if (!isEmpty(buffer->minHeap) &&  (EPSILON >= (peek(buffer->minHeap) - currentBoat->avg_weight))) {
+    if (!isEmpty(buffer->minHeap) &&
+        (EPSILON >= (peek(buffer->minHeap) - currentBoat->avg_weight))) {
         insert(buffer->minHeap, currentBoat->avg_weight);
     } else {
         insert(buffer->maxHeap, currentBoat->avg_weight);
@@ -206,23 +216,23 @@ void *workerThread(void *arg){
     return NULL;
 }
 
-
-double get3rdQuartile(SENAEBuffer *buffer){
-    if(buffer->totalSize < 3){
+double get3rdQuartile(SENAEBuffer *buffer) {
+    if (buffer->totalSize < 3) {
         return -1;
     }
     double position = 0.75 * (buffer->totalSize + 1) - 1;
-    printf("maxHeap size = %d, minHeap size = %d\n ", buffer->maxHeap->size, buffer->minHeap->size);
+    printf("maxHeap size = %d, minHeap size = %d\n ", buffer->maxHeap->size,
+           buffer->minHeap->size);
     printf("Q3 position = %.2f\n", position);
-    if(position >= buffer->maxHeap->size){
+    if (position >= buffer->maxHeap->size) {
         return peek(buffer->minHeap);
     }
     double decimal = position - (int)position;
-    return peek(buffer->maxHeap) + decimal * (peek(buffer->minHeap) - peek(buffer->maxHeap));
+    return peek(buffer->maxHeap) +
+           decimal * (peek(buffer->minHeap) - peek(buffer->maxHeap));
 }
 
-
-void rebalanceHeaps(SENAEBuffer *buffer){
+void rebalanceHeaps(SENAEBuffer *buffer) {
     while (buffer->maxHeap->size > ((buffer->totalSize + 1) * 3 / 4)) {
         double root = pop(buffer->maxHeap);
         insert(buffer->minHeap, root);

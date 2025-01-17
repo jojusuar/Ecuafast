@@ -1,9 +1,9 @@
-#include <stdio.h>
-#include <time.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 void sigint_handler(int);
 
@@ -18,9 +18,9 @@ int main() {
     }
 
     while (1) {
-        if (fork() == 0) { 
+        if (fork() == 0) {
             srand((unsigned int)(time(NULL) ^ getpid()));
-            int class = rand() % 2; 
+            int class = rand() % 2;
             char classstr[2];
             sprintf(classstr, "%d", class);
             double weight = 1 + (rand() % 100);
@@ -30,25 +30,27 @@ int main() {
             char *dest;
 
             switch (destination) {
-                case 1:
-                    dest = "ecuador";
-                    break;
-                case 2:
-                    dest = "usa";
-                    break;
-                case 3:
-                    dest = "europe";
-                    break;
-                default:
-                    dest = "unknown";
-                    break;
+            case 1:
+                dest = "ecuador";
+                break;
+            case 2:
+                dest = "usa";
+                break;
+            case 3:
+                dest = "europe";
+                break;
+            default:
+                dest = "unknown";
+                break;
             }
 
             int timeout = 5;
             char timeoutstr[5];
             sprintf(timeoutstr, "%d", timeout);
-            printf("Boat class: %s, weight: %s, destination: %s, timeout: %s\n", classstr, weightstr, dest, timeoutstr);
-            char *argv[] = {"./ecuafast", "-c", classstr, "-w", weightstr, "-d", dest, "-t", timeoutstr, NULL};
+            printf("Boat class: %s, weight: %s, destination: %s, timeout: %s\n",
+                   classstr, weightstr, dest, timeoutstr);
+            char *argv[] = {"./ecuafast", "-c", classstr, "-w",       weightstr,
+                            "-d",         dest, "-t",     timeoutstr, NULL};
             execvp(argv[0], argv);
             perror("execvp");
             exit(1);

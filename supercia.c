@@ -1,11 +1,11 @@
-#include "common.h"
 #include "boat.h"
+#include "common.h"
+#include <ctype.h>
+#include <getopt.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <time.h>
 #include <signal.h>
-#include <getopt.h>
-#include <ctype.h>
+#include <time.h>
 
 void *workerThread(void *arg);
 void sigpipe_handler(int);
@@ -14,7 +14,7 @@ void sigint_handler(int);
 int min_latency;
 int max_latency;
 
-int main(int argc, char* argv[]){
+int main(int argc, char *argv[]) {
     char *fvalue = NULL;
     char *tvalue = NULL;
     bool fflag = false;
@@ -23,9 +23,8 @@ int main(int argc, char* argv[]){
     int c;
 
     opterr = 0;
-    while ((c = getopt (argc, argv, "f:t:")) != -1){
-        switch (c)
-        {
+    while ((c = getopt(argc, argv, "f:t:")) != -1) {
+        switch (c) {
         case 'f':
             fvalue = optarg;
             fflag = true;
@@ -35,35 +34,40 @@ int main(int argc, char* argv[]){
             tflag = true;
             break;
         case 'h':
-            printf("Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+            printf(
+                "Usage: %s -f <response latency floor (seconds)> -t <response "
+                "latency top (seconds)>\n",
+                argv[0]);
             printf("    -h:             Shows this message.\n");
             return 0;
         case '?':
             if (optopt == 'f')
-            fprintf (stderr, "-%c requires an argument.\n", optopt);
+                fprintf(stderr, "-%c requires an argument.\n", optopt);
             if (optopt == 't')
-            fprintf (stderr, "-%c requires an argument.\n", optopt);
-            else if (isprint (optopt))
-            fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+                fprintf(stderr, "-%c requires an argument.\n", optopt);
+            else if (isprint(optopt))
+                fprintf(stderr, "Unknown option `-%c'.\n", optopt);
             else
-            fprintf (stderr,
-                    "Unknown option character `\\x%x'.\n",
-                    optopt);
+                fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
             return 1;
         }
     }
-    if(fflag){
+    if (fflag) {
         min_latency = atoi(fvalue);
-    }
-    else{
-        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+    } else {
+        fprintf(stderr,
+                "Usage: %s -f <response latency floor (seconds)> -t <response "
+                "latency top (seconds)>\n",
+                argv[0]);
         return 1;
     }
-    if(tflag){
+    if (tflag) {
         max_latency = atoi(tvalue);
-    }
-    else{
-        fprintf(stderr, "Usage: %s -f <response latency floor (seconds)> -t <response latency top (seconds)>\n", argv[0]);
+    } else {
+        fprintf(stderr,
+                "Usage: %s -f <response latency floor (seconds)> -t <response "
+                "latency top (seconds)>\n",
+                argv[0]);
         return 1;
     }
 
@@ -84,22 +88,22 @@ int main(int argc, char* argv[]){
     char *port = "8082";
     listenfd = open_listenfd(port);
 
-    if (listenfd < 0){
-		connection_error(listenfd);
+    if (listenfd < 0) {
+        connection_error(listenfd);
     }
-    printf("Server listening on port %s.\n  Press Ctrl+C to quit safely.\n", port);
+    printf("Server listening on port %s.\n  Press Ctrl+C to quit safely.\n",
+           port);
     pthread_t tid;
-    while(true){
+    while (true) {
         clientlen = sizeof(clientaddr);
         int *connfd = (int *)malloc(sizeof(int));
-		*connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
+        *connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
         pthread_create(&tid, NULL, workerThread, (void *)connfd);
     }
     return 0;
-
 }
 
-void *workerThread(void *arg){
+void *workerThread(void *arg) {
     pthread_detach(pthread_self());
     int connfd = *(int *)arg;
     free(arg);
@@ -113,43 +117,45 @@ void *workerThread(void *arg){
         perror("sigaction");
         pthread_exit(NULL);
     }
-    
+
     Boat *currentBoat = (Boat *)malloc(sizeof(Boat));
     int dest_length;
-    char *transaction = (char *)malloc(7*sizeof(char));
+    char *transaction = (char *)malloc(7 * sizeof(char));
     transaction[0] = '\0';
-    
+
     read(connfd, &(currentBoat->type), sizeof(BoatType));
     read(connfd, &(currentBoat->avg_weight), sizeof(double));
     read(connfd, &dest_length, sizeof(int));
-    currentBoat->destination = (char *)malloc((dest_length + 1)*sizeof(char));
+    currentBoat->destination = (char *)malloc((dest_length + 1) * sizeof(char));
     read(connfd, currentBoat->destination, dest_length);
     currentBoat->destination[dest_length] = '\0';
     printf("\n*******************************************************\n");
-    printf("Boat just arrived. Type: %d, avg weight: %f, destination: %s\n", currentBoat->type, currentBoat->avg_weight, currentBoat->destination);
+    printf("Boat just arrived. Type: %d, avg weight: %f, destination: %s\n",
+           currentBoat->type, currentBoat->avg_weight,
+           currentBoat->destination);
 
     int random_int = rand() % 100;
-    bool checkBoat = (currentBoat->type == PANAMAX && random_int < 50) || (currentBoat->type == CONVENTIONAL && random_int < 30);
+    bool checkBoat = (currentBoat->type == PANAMAX && random_int < 50) ||
+                     (currentBoat->type == CONVENTIONAL && random_int < 30);
     int latency = min_latency + rand() % (max_latency - min_latency + 1);
-    sleep(latency); //simulate response latency
-    if(checkBoat){
+    sleep(latency); // simulate response latency
+    if (checkBoat) {
         write(connfd, "CHECK", 5);
-    }
-    else{
+    } else {
         write(connfd, "PASS", 4);
     }
     printf("Sent response to boat.\n");
     read(connfd, transaction, 6);
     transaction[7] = '\0';
-    
-    if(strcmp(transaction, "COMMIT") != 0){
+
+    if (strcmp(transaction, "COMMIT") != 0) {
         printf("Discarding...\n");
         close(connfd);
         free(currentBoat->destination);
         free(currentBoat);
         pthread_exit(NULL);
     }
-    
+
     close(connfd);
     free(currentBoat->destination);
     free(currentBoat);

@@ -1,12 +1,12 @@
-//Code adapted from @Leyxargon
-// Original source: https://github.com/Leyxargon/c-linked-list
-
+// Code adapted from @Leyxargon
+//  Original source: https://github.com/Leyxargon/c-linked-list
 
 #include "list.h"
 
 List *newList() {
     List *list = (List *)malloc(sizeof(List));
-    if (list == NULL) return NULL;
+    if (list == NULL)
+        return NULL;
     list->head = NULL;
     list->tail = NULL;
     list->length = 0;
@@ -15,14 +15,16 @@ List *newList() {
 
 Node *newNode(void *generic) {
     Node *pnt = (Node *)malloc(sizeof(Node));
-    if (pnt == NULL) return NULL;
+    if (pnt == NULL)
+        return NULL;
     pnt->n = generic;
     pnt->next = NULL;
     return pnt;
 }
 
 void *get(List *list, int index) {
-    if (list == NULL || list->length == 0 || index >= list->length || index < 0) {
+    if (list == NULL || list->length == 0 || index >= list->length ||
+        index < 0) {
         return NULL;
     }
     Node *current = list->head;
@@ -32,42 +34,44 @@ void *get(List *list, int index) {
     return current->n;
 }
 
-void headInsert(List *list, void *x){ /* Implemented by José Julio Suárez */
-	Node *node = newNode(x);
-	if(list->head != NULL){
-		node->next = list->head;
-	}
-	list->head = node;
-	if(list->length == 0){
-		list->tail = node;
-	}
-	list->length++;
+void headInsert(List *list, void *x) { /* Implemented by José Julio Suárez */
+    Node *node = newNode(x);
+    if (list->head != NULL) {
+        node->next = list->head;
+    }
+    list->head = node;
+    if (list->length == 0) {
+        list->tail = node;
+    }
+    list->length++;
 }
 
-void tailInsert(List *list, void * generic){ /* Implemented by José Julio Suárez */
-	Node *node = newNode(generic);
-	if(list->tail != NULL){
-		list->tail->next = node;
-	}
-	list->tail = node;
-	if(list->length == 0){
-		list->head = node;
-	}
-	list->length++;
+void tailInsert(List *list,
+                void *generic) { /* Implemented by José Julio Suárez */
+    Node *node = newNode(generic);
+    if (list->tail != NULL) {
+        list->tail->next = node;
+    }
+    list->tail = node;
+    if (list->length == 0) {
+        list->head = node;
+    }
+    list->length++;
 }
 
-void *pop(List *list, int index){ /* Implemented by José Julio Suárez */
-	Node *extracted = extractNode(list, index);
-	if(extracted != NULL){
-		void *value = extracted->n;
-		free(extracted);
-		return value;
-	}
-	return NULL;
+void *pop(List *list, int index) { /* Implemented by José Julio Suárez */
+    Node *extracted = extractNode(list, index);
+    if (extracted != NULL) {
+        void *value = extracted->n;
+        free(extracted);
+        return value;
+    }
+    return NULL;
 }
 
 Node *extractNode(List *list, int index) {
-    if (list == NULL || list->length == 0 || index >= list->length || index < 0) {
+    if (list == NULL || list->length == 0 || index >= list->length ||
+        index < 0) {
         return NULL;
     }
 
@@ -75,7 +79,7 @@ Node *extractNode(List *list, int index) {
     Node *toRemove = list->head;
 
     if (index == 0) {
-        if (list->head == NULL) {  // Additional check for NULL head
+        if (list->head == NULL) { // Additional check for NULL head
             return NULL;
         }
         list->head = list->head->next;
@@ -102,23 +106,23 @@ Node *extractNode(List *list, int index) {
     return toRemove;
 }
 
-void appendNode(List *list, Node *node){ /* Implemented by José Julio Suárez */
-	if(list == NULL || node == NULL){
-		return;
-	}
-	if(list->length == 0){
-		list->head = node;
-		list->tail = node;
-	}
-	else{
-		list->tail->next = node;
-		list->tail = node;
-	}
-	list->length++;
+void appendNode(List *list, Node *node) { /* Implemented by José Julio Suárez */
+    if (list == NULL || node == NULL) {
+        return;
+    }
+    if (list->length == 0) {
+        list->head = node;
+        list->tail = node;
+    } else {
+        list->tail->next = node;
+        list->tail = node;
+    }
+    list->length++;
 }
 
-void appendList(List *target, List *source){ /* Implemented by José Julio Suárez */
-	if (target == NULL || source == NULL) {
+void appendList(List *target,
+                List *source) { /* Implemented by José Julio Suárez */
+    if (target == NULL || source == NULL) {
         return;
     }
     if (source->length == 0) {
@@ -138,12 +142,12 @@ void appendList(List *target, List *source){ /* Implemented by José Julio Suár
     free(source);
 }
 
-void deleteList(List *list) {  /* Modified by José Julio Suárez */
-	Node *current = list->head;
-	while(current != NULL){
-		Node *next = current->next;
-		free(current);
-		current = next;
-	}
-	free(list);
+void deleteList(List *list) { /* Modified by José Julio Suárez */
+    Node *current = list->head;
+    while (current != NULL) {
+        Node *next = current->next;
+        free(current);
+        current = next;
+    }
+    free(list);
 }
