@@ -9,27 +9,32 @@
 #include <string.h>
 
 #define SRI_HOSTNAME                                                           \
-    "127.0.0.1" // these TCP/IP addresses could be changed to the actual IPs of
-                // each institution's server
+    "127.0.0.1" // these TCP/IP sockets could be changed to the actual IPs and
+                // ports of each institution's server
 #define SRI_PORT "8080"
 #define SENAE_HOSTNAME "127.0.0.1"
 #define SENAE_PORT "8081"
 #define SUPERCIA_HOSTNAME "127.0.0.1"
 #define SUPERCIA_PORT "8082"
+#define PORTADMIN_HOSTNAME "127.0.0.1"
+#define PORTADMIN_PORT "8083"
 
 void askAgency(int, char *);
 void *askSRI();
 void *askSENAE();
 void *askSUPERCIA();
+void *connectToPortAdmin(void *);
 void *startTimeout();
 void rollback();
 void commit();
-void handle_sigint(int);
+void handle_sigint_on_agency_check(int);
+void handle_sigint_on_admin_connection(int);
 
 typedef struct {
     int srifd;
     int senaefd;
     int superciafd;
+    int adminfd;
 } Connections;
 
 Boat *myBoat;
@@ -37,8 +42,10 @@ int timeout;
 int responseCounter;
 sem_t counterMutex;
 sem_t commitMutex;
+pthread_cond_t greenlight;
+pthread_mutex_t greenlightMutex;
 Connections *connections;
-pthread_t request_tid;
+pthread_t request_tid, admin_tid;
 pthread_t sri_tid, senae_tid, supercia_tid;
 char sriResult[6], senaeResult[6], superciaResult[6];
 
@@ -154,6 +161,8 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    myBoat->unloading_time = 10;
+
     sem_init(&counterMutex, 0, 1);
     sem_init(&commitMutex, 0, -2);
     sem_wait(&counterMutex);
@@ -163,9 +172,13 @@ int main(int argc, char *argv[]) {
     connections->srifd = -1;
     connections->senaefd = -1;
     connections->superciafd = -1;
+    connections->adminfd = -1;
+
+    pthread_cond_init(&greenlight, NULL);
+    pthread_mutex_init(&greenlightMutex, NULL);
 
     struct sigaction sa;
-    sa.sa_handler = handle_sigint;
+    sa.sa_handler = handle_sigint_on_agency_check;
     sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
     if (sigaction(SIGINT, &sa, NULL) == -1) {
@@ -174,15 +187,18 @@ int main(int argc, char *argv[]) {
     }
 
     pthread_create(&request_tid, NULL, startTimeout, NULL);
+    pthread_create(&admin_tid, NULL, connectToPortAdmin, NULL);
     sem_wait(&commitMutex);
-    commit();
-
     printf("SRI says: %s\n", sriResult);
     printf("SENAE says: %s\n", senaeResult);
     printf("SUPERCIA says: %s\n", superciaResult);
-
-    free(myBoat);
+    commit();
+    pthread_mutex_lock(&greenlightMutex);
+    pthread_cond_signal(&greenlight);
+    pthread_mutex_unlock(&greenlightMutex);
     sem_destroy(&counterMutex);
+    pthread_join(admin_tid, NULL);
+    free(myBoat);
     free(connections);
     return 0;
 }
@@ -259,6 +275,47 @@ void *startTimeout() {
     return NULL;
 }
 
+void *connectToPortAdmin(void *arg){
+    connections->adminfd = open_clientfd(PORTADMIN_HOSTNAME, PORTADMIN_PORT);
+    printf("Initiated communication with portuary administration.\n");
+    read(connections->adminfd, &(myBoat->id), sizeof(int));
+    printf("The portuary admin has assigned us ID: %d\n", myBoat->id);
+    write(connections->adminfd, &(myBoat->type), sizeof(BoatType));
+    write(connections->adminfd, &(myBoat->avg_weight), sizeof(double));
+    int dest_length = strlen(myBoat->destination);
+    write(connections->adminfd, &(dest_length), sizeof(int));
+    write(connections->adminfd, myBoat->destination, dest_length);
+    write(connections->adminfd, &(myBoat->unloading_time), sizeof(double));
+    printf("The port is waiting for agencies' decision before greenlighting us.\n");
+    pthread_mutex_unlock(&greenlightMutex);
+    pthread_cond_wait(&greenlight, &greenlightMutex);
+    pthread_mutex_unlock(&greenlightMutex);
+    int check_counter = 0;
+    check_counter =
+        strcmp(sriResult, "CHECK") == 0 ? check_counter + 1 : check_counter;
+    check_counter =
+        strcmp(senaeResult, "CHECK") == 0 ? check_counter + 1 : check_counter;
+    check_counter = strcmp(superciaResult, "CHECK") == 0 ? check_counter + 1
+                                                         : check_counter;
+    myBoat->toCheck = check_counter >= 2;
+
+    if(myBoat->toCheck){
+        myBoat->unloading_time *= 2;
+    }
+    if(strcmp(myBoat->destination, "ecuador") != 0){
+        myBoat->unloading_time *= 0.5;
+    }            
+    write(connections->adminfd, &(myBoat->toCheck), sizeof(bool));
+    char *queue_str;
+    size_t list_length;
+    while(read(connections->adminfd, &list_length, sizeof(size_t)) > 0){
+        queue_str = (char *)malloc(list_length*sizeof(char) + 1);
+        read(connections->adminfd, queue_str, list_length);
+        printf("\n%s", queue_str);
+        free(queue_str);
+    }
+}
+
 void askAgency(int connfd, char *response) {
     printf("Started a request\n");
     write(connfd, &(myBoat->type), sizeof(BoatType));
@@ -301,7 +358,7 @@ void commit() {
     }
 }
 
-void handle_sigint(int sig) {
+void handle_sigint_on_agency_check(int sig) {
     printf("Aborting gracefully...\n");
     pthread_cancel(sri_tid);
     pthread_cancel(senae_tid);
@@ -309,6 +366,14 @@ void handle_sigint(int sig) {
     rollback();
     free(myBoat);
     sem_destroy(&counterMutex);
+    free(connections);
+    exit(0);
+}
+
+void handle_sigint_on_admin_connection(int sig) {
+    printf("Aborting gracefully...\n");
+    close(connections->adminfd);
+    free(myBoat);
     free(connections);
     exit(0);
 }

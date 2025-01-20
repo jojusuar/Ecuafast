@@ -7,20 +7,23 @@ TARGET2 = ecuafast
 TARGET3 = senae
 TARGET4 = supercia
 TARGET5 = testbarcos
-TARGETS = $(TARGET1) $(TARGET2) $(TARGET3) $(TARGET4) $(TARGET5)
+TARGET6 = portadmin
+TARGETS = $(TARGET1) $(TARGET2) $(TARGET3) $(TARGET4) $(TARGET5) $(TARGET6)
 
 SRCS1 = sri.c common.c
 SRCS2 = ecuafast.c
 SRCS3 = senae.c common.c heap.c
 SRCS4 = supercia.c common.c
 SRCS5 = testbarcos.c
+SRCS6 = portadmin.c common.c list.c
 
 OBJS1 = $(SRCS1:.c=.o)
 OBJS2 = $(SRCS2:.c=.o)
 OBJS3 = $(SRCS3:.c=.o)
 OBJS4 = $(SRCS4:.c=.o)
 OBJS5 = $(SRCS5:.c=.o)
-OBJS = $(OBJS1) $(OBJS2) $(OBJS3) $(OBJS4) $(OBJS5)
+OBJS6 = $(SRCS6:.c=.o)
+OBJS = $(OBJS1) $(OBJS2) $(OBJS3) $(OBJS4) $(OBJS5) $(OBJS6)
 
 all: $(TARGETS)
 
@@ -37,6 +40,9 @@ $(TARGET4): $(OBJS4)
 	$(CC) $(CFLAGS) -o $@ $^ $(LFLAGS)
 
 $(TARGET5): $(OBJS5)
+	$(CC) $(CFLAGS) -o $@ $^ $(LFLAGS)
+
+$(TARGET6): $(OBJS6)
 	$(CC) $(CFLAGS) -o $@ $^ $(LFLAGS)
 
 %.o: %.c 
