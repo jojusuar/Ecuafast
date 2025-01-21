@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     myBoat->toCheck = false;
-    myBoat->unloading_time = 2.5;
+    myBoat->unloading_time = 10;
 
     sem_init(&counterMutex, 0, 1);
     sem_init(&commitMutex, 0, -2);
@@ -207,13 +207,13 @@ int main(int argc, char *argv[]) {
     sem_destroy(&counterMutex);
     srand((unsigned int)time(NULL));
     int random_int;
-    while (1) {
-        random_int = rand() % 100;
-        if (random_int < 5) { 
-            breachHull();
-        }
-        sleep(10);
-    }
+    // while (1) {
+    //     random_int = rand() % 100;
+    //     if (random_int < 5) { 
+    //         breachHull();
+    //     }
+    //     sleep(10);
+    // }
     pthread_join(admin_tid, NULL);
     return 0;
 }
@@ -294,7 +294,11 @@ void *connectToPortAdmin(void *arg) {
     connections->adminfd = open_clientfd(PORTADMIN_HOSTNAME, PORTADMIN_PORT);
     printf("Initiated communication with portuary administration.\n");
     if(read(connections->adminfd, &(myBoat->id), sizeof(int)) < 0){
-        printf("FATAL ERROR\n");
+        printf("Port administration is unreachable.\n");
+        free(myBoat);
+        sem_destroy(&counterMutex);
+        free(connections);
+        exit(0);
     }
     printf("The portuary admin has assigned us ID: %d\n", myBoat->id);
     write(connections->adminfd, &(myBoat->type), sizeof(BoatType));

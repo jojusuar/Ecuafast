@@ -57,7 +57,7 @@ int main() {
             exit(1);
         }
 
-        usleep(5000000);
+        usleep(500000);
     }
     while (wait(NULL) > 0);
     return 0;

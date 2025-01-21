@@ -37,20 +37,25 @@ typedef struct {
 } ListenerData;
 
 void *workerThread(void *);
+void *unloaderThread(void *);
 void *damageListener(void *);
 void sigint_handler(int);
 void serialize_queue(char *);
+Boat *popBoat();
 
 Port *port;
 DockingOrder *order;
-int docks_number = 10;
+sem_t docksSemaphore;
+int docks_number = 1;
 
 int main() {
     signal(SIGPIPE, SIG_IGN);
     port = (Port *)malloc(sizeof(Port));
     port->docks = (Boat **)malloc(docks_number * sizeof(Boat *));
-    sem_init(&(port->empty), 0, 1);
+    sem_init(&(port->empty), 0, 0);
     sem_init(&(port->full), 0, 1);
+
+    sem_init(&docksSemaphore, 0, 0);
 
     order = (DockingOrder *)malloc(sizeof(DockingOrder));
     order->lowPriorityQueue = newList();
@@ -86,6 +91,10 @@ int main() {
     }
     printf("Server listening on port %s.\n  Press Ctrl+C to quit safely.\n",
            port);
+    pthread_t unloader_tid;
+    for (int i = 0; i < docks_number; i++) {
+        pthread_create(&unloader_tid, NULL, unloaderThread, NULL);
+    }
     pthread_t tid;
     while (true) {
         clientlen = sizeof(clientaddr);
@@ -148,6 +157,7 @@ void *workerThread(void *arg) {
     pthread_cond_broadcast(&order->cond);
     pthread_mutex_unlock(&order->cond_mutex);
     sem_post(&(order->rw_mutex));
+    sem_post(&docksSemaphore);
     /// WRITER END
 
     int mytid = pthread_self();
@@ -160,7 +170,6 @@ void *workerThread(void *arg) {
     // TODO: create a sigpipe handler
 
     int last_version = -1;
-    bool shouldStop;
     while (1) {
         pthread_mutex_lock(&order->cond_mutex);
         while (order->version == last_version) {
@@ -234,7 +243,7 @@ void serialize_queue(char *target) {
     target[0] = '\0';
     if (order->highPriorityQueue->head == NULL &&
         order->lowPriorityQueue->head == NULL) {
-        strcat(target, "Empty queue!");
+        strcat(target, "The queue is clear!\n");
         return;
     }
     strcat(target, "PORT DOCKING QUEUE");
@@ -277,10 +286,11 @@ void *damageListener(void *arg) {
     read(data->connfd, message, 3);
     message[4] = '\0';
     if (strcmp(message, "DMG") == 0) {
-        printf("Boat with ID: %d has broken! removing from list...\n", data->myBoat->id);
+        printf("Boat with ID: %d has broken! removing from list...\n",
+               data->myBoat->id);
         close(data->connfd);
         sem_wait(&(order->rw_mutex));
-        if(!deleteBoat(order->highPriorityQueue, data->myBoat->id)){
+        if (!deleteBoat(order->highPriorityQueue, data->myBoat->id)) {
             deleteBoat(order->lowPriorityQueue, data->myBoat->id);
         }
         serialize_queue(order->queue_str);
@@ -289,8 +299,45 @@ void *damageListener(void *arg) {
         pthread_cond_broadcast(&order->cond);
         pthread_mutex_unlock(&order->cond_mutex);
         sem_post(&(order->rw_mutex));
+        sem_wait(&docksSemaphore);
         free(data);
         pthread_exit(NULL);
     }
     return NULL;
 }
+
+void *unloaderThread(void *arg) {
+    Boat *currentBoat = NULL;
+    while (true) {
+        sem_wait(&docksSemaphore);
+        sem_wait(&(order->rw_mutex));
+        currentBoat = popBoat();
+        //podria guardar el connfd en el bote y escribirle OK desde aqui para que cierre su lado del socket... asi se libera solito
+        serialize_queue(order->queue_str);
+        pthread_mutex_lock(&order->cond_mutex);
+        order->version++;
+        pthread_cond_broadcast(&order->cond);
+        pthread_mutex_unlock(&order->cond_mutex);
+        sem_post(&(order->rw_mutex));
+        printf("Unloading boat with ID: %d...\n", currentBoat->id);
+        sleep(currentBoat->unloading_time);
+        printf("Boat with ID: %d has finished unloading and has left the port.\n", currentBoat->id);
+    }
+}
+
+Boat *popBoat() {
+    Boat *boat = NULL;
+    if (order->highPriorityQueue->head != NULL) {
+        boat = (Boat *)pop(order->highPriorityQueue, 0);
+    } else if (order->lowPriorityQueue->head != NULL) {
+        boat = (Boat *)pop(order->lowPriorityQueue, 0);
+    }
+    return boat;
+}
+
+/// CREAR HILOS DE DESEMBARCO HASTA QUE NRO. HILOS = N, PUEDE SER CON UN
+/// SEMAFORO INICIALIZADO EN N
+// A CADA HILO QUE SE CREA SE LE PASA EL PRIMER BARCO DE LA LISTA
+// ACABAR LA CONEXION CON ECUAFAST DE ALGUNA MANERA, GUARDAR EL CONNFD EN EL
+// BARCO TALVEZ Y DECIRLE CHAO MMV HACER SLEEP POR LO QUE SEA QUE DIGA EL
+// UNLOADING TIME Y CHAO MIJA
