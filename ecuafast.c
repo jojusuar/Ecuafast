@@ -44,8 +44,7 @@ int timeout;
 int responseCounter;
 sem_t counterMutex;
 sem_t commitMutex;
-pthread_cond_t greenlight;
-pthread_mutex_t greenlightMutex;
+sem_t greenlightMutex;
 Connections *connections;
 pthread_t request_tid, admin_tid;
 pthread_t sri_tid, senae_tid, supercia_tid;
@@ -176,8 +175,8 @@ int main(int argc, char *argv[]) {
     connections->superciafd = -1;
     connections->adminfd = -1;
 
-    pthread_cond_init(&greenlight, NULL);
-    pthread_mutex_init(&greenlightMutex, NULL);
+    sem_init(&greenlightMutex, 0, 1);
+    sem_wait(&greenlightMutex);
 
     struct sigaction sa;
     sa.sa_handler = handle_sigint_on_agency_check;
@@ -202,10 +201,9 @@ int main(int argc, char *argv[]) {
         perror("sigaction");
         exit(1);
     }
-    pthread_mutex_lock(&greenlightMutex);
-    pthread_cond_signal(&greenlight);
-    pthread_mutex_unlock(&greenlightMutex);
+    sem_post(&greenlightMutex);
     sem_destroy(&counterMutex);
+    printf("supposedly gave signal...\n");
     srand((unsigned int)time(NULL));
     int random_int;
     while (1) {
@@ -309,9 +307,7 @@ void *connectToPortAdmin(void *arg) {
     write(connections->adminfd, myBoat->destination, dest_length);
     printf("The port is waiting for agencies' decision before greenlighting "
            "us.\n");
-    pthread_mutex_unlock(&greenlightMutex);
-    pthread_cond_wait(&greenlight, &greenlightMutex);
-    pthread_mutex_unlock(&greenlightMutex);
+    sem_wait(&greenlightMutex);
     int check_counter = 0;
     check_counter =
         strcmp(sriResult, "CHECK") == 0 ? check_counter + 1 : check_counter;
@@ -326,11 +322,14 @@ void *connectToPortAdmin(void *arg) {
     if (strcmp(myBoat->destination, "ecuador") != 0) {
         myBoat->unloading_time *= 0.5;
     }
+    printf("going to write!!\n");
     write(connections->adminfd, &(myBoat->toCheck), sizeof(bool));
+    printf("supposedly written..\n");
     write(connections->adminfd, &(myBoat->unloading_time), sizeof(double));
     char *server_message;
     size_t msg_length;
-    while (read(connections->adminfd, &msg_length, sizeof(size_t)) > 0) {
+    while (true) {
+        read(connections->adminfd, &msg_length, sizeof(size_t));
         server_message = (char *)malloc(msg_length * sizeof(char) + 1);
         read(connections->adminfd, server_message, msg_length);
         server_message[msg_length] = '\0';
