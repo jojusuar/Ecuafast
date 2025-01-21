@@ -8,5 +8,6 @@ typedef struct Boat {
     char *destination;
     double unloading_time;
     bool toCheck;
+    int connfd;
     int id;
 } Boat;

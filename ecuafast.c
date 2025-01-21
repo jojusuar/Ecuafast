@@ -26,6 +26,7 @@ void *askSUPERCIA();
 void *connectToPortAdmin(void *);
 void *startTimeout();
 void breachHull();
+void finish_client();
 void rollback();
 void commit();
 void handle_sigint_on_agency_check(int);
@@ -207,13 +208,13 @@ int main(int argc, char *argv[]) {
     sem_destroy(&counterMutex);
     srand((unsigned int)time(NULL));
     int random_int;
-    // while (1) {
-    //     random_int = rand() % 100;
-    //     if (random_int < 5) { 
-    //         breachHull();
-    //     }
-    //     sleep(10);
-    // }
+    while (1) {
+        random_int = rand() % 100;
+        if (random_int < 5) { 
+            breachHull();
+        }
+        sleep(10);
+    }
     pthread_join(admin_tid, NULL);
     return 0;
 }
@@ -327,13 +328,17 @@ void *connectToPortAdmin(void *arg) {
     }
     write(connections->adminfd, &(myBoat->toCheck), sizeof(bool));
     write(connections->adminfd, &(myBoat->unloading_time), sizeof(double));
-    char *queue_str;
-    size_t list_length;
-    while (read(connections->adminfd, &list_length, sizeof(size_t)) > 0) {
-        queue_str = (char *)malloc(list_length * sizeof(char) + 1);
-        read(connections->adminfd, queue_str, list_length);
-        printf("\n%s", queue_str);
-        free(queue_str);
+    char *server_message;
+    size_t msg_length;
+    while (read(connections->adminfd, &msg_length, sizeof(size_t)) > 0) {
+        server_message = (char *)malloc(msg_length * sizeof(char) + 1);
+        read(connections->adminfd, server_message, msg_length);
+        server_message[msg_length] = '\0';
+        if(strcmp(server_message, "DOCKED") == 0){
+            finish_client();
+        }
+        printf("\n%s", server_message);
+        free(server_message);
     }
 }
 
@@ -398,6 +403,14 @@ void breachHull() {
         "The hull has been breached! Reporting to portuary administrator...\n");
     char message[4] = "DMG";
     write(connections->adminfd, message, 3);
+    close(connections->adminfd);
+    free(myBoat);
+    free(connections);
+    exit(0);
+}
+
+void finish_client() {
+    printf("We have reached the port!\n");
     close(connections->adminfd);
     free(myBoat);
     free(connections);
