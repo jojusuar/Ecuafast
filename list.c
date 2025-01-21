@@ -2,6 +2,7 @@
 //  Original source: https://github.com/Leyxargon/c-linked-list
 
 #include "list.h"
+#include "boat.h"
 
 List *newList() {
     List *list = (List *)malloc(sizeof(List));
@@ -150,4 +151,30 @@ void deleteList(List *list) { /* Modified by José Julio Suárez */
         current = next;
     }
     free(list);
+}
+
+bool deleteBoat(List *queue, int boatId) {
+    Node *previous = NULL;
+    Node *current = queue->head;
+    while (current != NULL) {
+        Boat *currentBoat = (Boat *)current->n;
+        if (currentBoat->id == boatId) {
+            if (previous != NULL) {
+                previous->next = current->next;
+            } else {
+                queue->head = current->next;
+            }
+            if (current->next == NULL) {
+                queue->tail = previous; // Update tail if needed
+            }
+            queue->length--;
+
+            // Free memory and exit
+            free(current);
+            return true;
+        }
+        previous = current;
+        current = current->next;
+    }
+    return false;
 }

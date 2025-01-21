@@ -280,50 +280,8 @@ void *damageListener(void *arg) {
         printf("Boat with ID: %d has broken! removing from list...\n", data->myBoat->id);
         close(data->connfd);
         sem_wait(&(order->rw_mutex));
-        bool stop = false;
-        Node *previous = NULL;
-        Node *current = order->highPriorityQueue->head;
-        Boat *currentBoat;
-        while (current != NULL) {
-            currentBoat = (Boat *)current->n;
-            if (currentBoat->id == data->myBoat->id) {
-                if (previous != NULL) {
-                    previous->next = current->next;
-                } else {
-                    order->highPriorityQueue->head = current->next;
-                }
-                if (current->next == NULL && previous != NULL) {
-                    previous->next = NULL;
-                    order->highPriorityQueue->tail = previous;
-                }
-                order->highPriorityQueue->length--;
-                stop = true;
-                break;
-            }
-            previous = current;
-            current = current->next;
-        }
-        if (!stop) {
-            previous = NULL;
-            current = order->lowPriorityQueue->head;
-            while (current != NULL) {
-                currentBoat = (Boat *)current->n;
-                if (currentBoat->id == data->myBoat->id) {
-                    if (previous != NULL) {
-                        previous->next = current->next;
-                    } else {
-                        order->lowPriorityQueue->head = current->next;
-                    }
-                    if (current->next == NULL && previous != NULL) {
-                        previous->next = NULL;
-                        order->lowPriorityQueue->tail = previous;
-                    }
-                    order->lowPriorityQueue->length--;
-                    break;
-                }
-                previous = current;
-                current = current->next;
-            }
+        if(!deleteBoat(order->highPriorityQueue, data->myBoat->id)){
+            deleteBoat(order->lowPriorityQueue, data->myBoat->id);
         }
         serialize_queue(order->queue_str);
         pthread_mutex_lock(&order->cond_mutex);

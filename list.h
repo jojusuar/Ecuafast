@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 typedef struct node {
     void *n; /* data field(s) */
@@ -52,3 +53,5 @@ void appendList(
     List *); /* Appends the whole 2nd list to the 1st list and frees the 2nd. */
 
 void deleteList(List *); /* Modified by José Julio Suárez */
+
+bool deleteBoat(List * , int );
