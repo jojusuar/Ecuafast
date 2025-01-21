@@ -25,6 +25,7 @@ void *askSENAE();
 void *askSUPERCIA();
 void *connectToPortAdmin(void *);
 void *startTimeout();
+void breachHull();
 void rollback();
 void commit();
 void handle_sigint_on_agency_check(int);
@@ -160,8 +161,8 @@ int main(int argc, char *argv[]) {
             argv[0]);
         exit(1);
     }
-
-    myBoat->unloading_time = 10;
+    myBoat->toCheck = false;
+    myBoat->unloading_time = 2.5;
 
     sem_init(&counterMutex, 0, 1);
     sem_init(&commitMutex, 0, -2);
@@ -193,13 +194,27 @@ int main(int argc, char *argv[]) {
     printf("SENAE says: %s\n", senaeResult);
     printf("SUPERCIA says: %s\n", superciaResult);
     commit();
+    sa.sa_handler = handle_sigint_on_admin_connection;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction");
+        exit(1);
+    }
     pthread_mutex_lock(&greenlightMutex);
     pthread_cond_signal(&greenlight);
     pthread_mutex_unlock(&greenlightMutex);
     sem_destroy(&counterMutex);
+    srand((unsigned int)time(NULL));
+    int random_int;
+    while (1) {
+        random_int = rand() % 100;
+        if (random_int < 5) { 
+            breachHull();
+        }
+        sleep(10);
+    }
     pthread_join(admin_tid, NULL);
-    free(myBoat);
-    free(connections);
     return 0;
 }
 
@@ -275,18 +290,20 @@ void *startTimeout() {
     return NULL;
 }
 
-void *connectToPortAdmin(void *arg){
+void *connectToPortAdmin(void *arg) {
     connections->adminfd = open_clientfd(PORTADMIN_HOSTNAME, PORTADMIN_PORT);
     printf("Initiated communication with portuary administration.\n");
-    read(connections->adminfd, &(myBoat->id), sizeof(int));
+    if(read(connections->adminfd, &(myBoat->id), sizeof(int)) < 0){
+        printf("FATAL ERROR\n");
+    }
     printf("The portuary admin has assigned us ID: %d\n", myBoat->id);
     write(connections->adminfd, &(myBoat->type), sizeof(BoatType));
     write(connections->adminfd, &(myBoat->avg_weight), sizeof(double));
     int dest_length = strlen(myBoat->destination);
     write(connections->adminfd, &(dest_length), sizeof(int));
     write(connections->adminfd, myBoat->destination, dest_length);
-    write(connections->adminfd, &(myBoat->unloading_time), sizeof(double));
-    printf("The port is waiting for agencies' decision before greenlighting us.\n");
+    printf("The port is waiting for agencies' decision before greenlighting "
+           "us.\n");
     pthread_mutex_unlock(&greenlightMutex);
     pthread_cond_wait(&greenlight, &greenlightMutex);
     pthread_mutex_unlock(&greenlightMutex);
@@ -297,19 +314,19 @@ void *connectToPortAdmin(void *arg){
         strcmp(senaeResult, "CHECK") == 0 ? check_counter + 1 : check_counter;
     check_counter = strcmp(superciaResult, "CHECK") == 0 ? check_counter + 1
                                                          : check_counter;
-    myBoat->toCheck = check_counter >= 2;
-
-    if(myBoat->toCheck){
+    myBoat->toCheck = (check_counter >= 2);
+    if (myBoat->toCheck) {
         myBoat->unloading_time *= 2;
     }
-    if(strcmp(myBoat->destination, "ecuador") != 0){
+    if (strcmp(myBoat->destination, "ecuador") != 0) {
         myBoat->unloading_time *= 0.5;
-    }            
+    }
     write(connections->adminfd, &(myBoat->toCheck), sizeof(bool));
+    write(connections->adminfd, &(myBoat->unloading_time), sizeof(double));
     char *queue_str;
     size_t list_length;
-    while(read(connections->adminfd, &list_length, sizeof(size_t)) > 0){
-        queue_str = (char *)malloc(list_length*sizeof(char) + 1);
+    while (read(connections->adminfd, &list_length, sizeof(size_t)) > 0) {
+        queue_str = (char *)malloc(list_length * sizeof(char) + 1);
         read(connections->adminfd, queue_str, list_length);
         printf("\n%s", queue_str);
         free(queue_str);
@@ -370,8 +387,13 @@ void handle_sigint_on_agency_check(int sig) {
     exit(0);
 }
 
-void handle_sigint_on_admin_connection(int sig) {
-    printf("Aborting gracefully...\n");
+void handle_sigint_on_admin_connection(int sig) { breachHull(); }
+
+void breachHull() {
+    printf(
+        "The hull has been breached! Reporting to portuary administrator...\n");
+    char message[4] = "DMG";
+    write(connections->adminfd, message, 3);
     close(connections->adminfd);
     free(myBoat);
     free(connections);

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 void sigint_handler(int);
 
@@ -17,7 +18,7 @@ int main() {
         exit(1);
     }
 
-    while (1) {
+    for (int i = 0; i < 100; i++) {
         if (fork() == 0) {
             srand((unsigned int)(time(NULL) ^ getpid()));
             int class = rand() % 2;
@@ -56,9 +57,9 @@ int main() {
             exit(1);
         }
 
-        usleep(500 * 1000);
+        usleep(5000000);
     }
-
+    while (wait(NULL) > 0);
     return 0;
 }
 
