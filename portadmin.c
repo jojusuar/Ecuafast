@@ -41,7 +41,7 @@ Boat *popBoat();
 Port *port;
 DockingOrder *order;
 sem_t docksSemaphore;
-int docks_number = 1;
+int docks_number = 5;
 
 int main() {
     signal(SIGPIPE, SIG_IGN);
