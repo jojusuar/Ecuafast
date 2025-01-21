@@ -168,8 +168,9 @@ bool deleteBoat(List *queue, int boatId) {
                 queue->tail = previous; // Update tail if needed
             }
             queue->length--;
-
-            // Free memory and exit
+            
+            free(currentBoat->destination);
+            free(currentBoat);
             free(current);
             return true;
         }

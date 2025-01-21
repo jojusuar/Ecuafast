@@ -304,8 +304,8 @@ void *connectToPortAdmin(void *arg) {
     printf("The portuary admin has assigned us ID: %d\n", myBoat->id);
     write(connections->adminfd, &(myBoat->type), sizeof(BoatType));
     write(connections->adminfd, &(myBoat->avg_weight), sizeof(double));
-    int dest_length = strlen(myBoat->destination);
-    write(connections->adminfd, &(dest_length), sizeof(int));
+    size_t dest_length = strlen(myBoat->destination);
+    write(connections->adminfd, &(dest_length), sizeof(size_t));
     write(connections->adminfd, myBoat->destination, dest_length);
     printf("The port is waiting for agencies' decision before greenlighting "
            "us.\n");
