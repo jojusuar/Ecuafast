@@ -32,7 +32,7 @@ Boat *popBoat();
 void broadcast_update(const char *);
 
 DockingOrder *order;
-int docks_number = 10;
+int docks_number = 5;
 
 int main() {
     signal(SIGPIPE, SIG_IGN);
@@ -264,6 +264,7 @@ void *unloaderThread(void *arg) {
         write(currentBoat->connfd, &msg_length, sizeof(size_t));
         write(currentBoat->connfd, message, msg_length);
         serialize_queue(order->queue_str);
+        broadcast_update(order->queue_str);
         sem_post(&(order->mutex));
         printf("Unloading boat with ID: %d... Hours remaining: %.2f\n",
                currentBoat->id, currentBoat->unloading_time);
