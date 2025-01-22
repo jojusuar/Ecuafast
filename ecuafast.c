@@ -45,6 +45,7 @@ int responseCounter;
 sem_t counterMutex;
 sem_t commitMutex;
 sem_t greenlightMutex;
+sem_t connectionMutex;
 Connections *connections;
 pthread_t request_tid, admin_tid;
 pthread_t sri_tid, senae_tid, supercia_tid;
@@ -177,6 +178,7 @@ int main(int argc, char *argv[]) {
 
     sem_init(&greenlightMutex, 0, 1);
     sem_wait(&greenlightMutex);
+    sem_init(&connectionMutex, 0, 0);
 
     struct sigaction sa;
     sa.sa_handler = handle_sigint_on_agency_check;
@@ -205,6 +207,7 @@ int main(int argc, char *argv[]) {
     sem_destroy(&counterMutex);
     printf("supposedly gave signal...\n");
     srand((unsigned int)time(NULL));
+    sem_wait(&connectionMutex);
     int random_int;
     while (1) {
         random_int = rand() % 100;
@@ -326,6 +329,7 @@ void *connectToPortAdmin(void *arg) {
     write(connections->adminfd, &(myBoat->toCheck), sizeof(bool));
     printf("supposedly written..\n");
     write(connections->adminfd, &(myBoat->unloading_time), sizeof(double));
+    sem_post(&connectionMutex);
     char *server_message;
     size_t msg_length;
     while (true) {
