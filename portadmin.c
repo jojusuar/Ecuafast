@@ -18,6 +18,7 @@ typedef struct {
     char *queue_str;
     int str_capacity;
     sem_t mutex;
+    sem_t full;
     int next_id;
 } DockingOrder;
 
@@ -31,11 +32,10 @@ Boat *popBoat();
 void broadcast_update(const char *);
 
 DockingOrder *order;
+int docks_number = 10;
 
 int main() {
     signal(SIGPIPE, SIG_IGN);
-
-    // sem_init(&docksSemaphore, 0, 0);
 
     order = (DockingOrder *)malloc(sizeof(DockingOrder));
     order->lowPriorityQueue = newList();
@@ -45,6 +45,7 @@ int main() {
     order->queue_str[0] = '\0';
     order->next_id = 0;
     sem_init(&(order->mutex), 0, 1);
+    sem_init(&order->full, 0, 0);
 
     struct sigaction sigintAction;
     sigintAction.sa_handler = sigint_handler;
@@ -66,11 +67,10 @@ int main() {
     }
     printf("Server listening on port %s.\n  Press Ctrl+C to quit safely.\n",
            port);
-    // pthread_t unloader_tid;
-    // for (int i = 0; i < docks_number; i++)
-    // {
-    //     pthread_create(&unloader_tid, NULL, unloaderThread, NULL);
-    // }
+    pthread_t unloader_tid;
+    for (int i = 0; i < docks_number; i++) {
+        pthread_create(&unloader_tid, NULL, unloaderThread, NULL);
+    }
     pthread_t tid;
     while (true) {
         clientlen = sizeof(clientaddr);
@@ -160,6 +160,11 @@ void *workerThread(void *arg) {
         remove_boat(currentBoat->id);
         pthread_exit(NULL);
     }
+    else if(strcmp(message, "BYE") == 0){
+        printf("Gracefully ended connection with ID: %d\n", currentBoat->id);
+        close(currentBoat->connfd);
+        pthread_exit(NULL);
+    }
 }
 
 void enqueue_boat(Boat *currentBoat) {
@@ -182,13 +187,14 @@ void enqueue_boat(Boat *currentBoat) {
         order->queue_str = new_queue_str;
         order->str_capacity = new_capacity;
     }
-    // sem_post(&docksSemaphore);
     serialize_queue(order->queue_str);
     broadcast_update(order->queue_str);
     sem_post(&(order->mutex));
+    sem_post(&order->full);
 }
 
 void remove_boat(int id) {
+    sem_wait(&order->full);
     sem_wait(&(order->mutex));
     if (!deleteBoat(order->highPriorityQueue, id)) {
         deleteBoat(order->lowPriorityQueue, id);
@@ -250,30 +256,24 @@ void *unloaderThread(void *arg) {
     char message[7] = "DOCKED";
     int current_id;
     size_t msg_length = strlen(message);
-    // while (true)
-    // {
-    //     sem_wait(&docksSemaphore);
-    //     sem_wait(&(order->mutex));
-    //     currentBoat = popBoat();
-    //     current_id = currentBoat->id;
-    //     write(currentBoat->connfd, &msg_length, sizeof(size_t));
-    //     write(currentBoat->connfd, message, msg_length);
-    //     close(currentBoat->connfd);
-    //     serialize_queue(order->queue_str);
-    //     pthread_mutex_lock(&order->cond_mutex);
-    //     order->version++;
-    //     pthread_cond_broadcast(&order->cond);
-    //     pthread_mutex_unlock(&order->cond_mutex);
-    //     sem_post(&(order->mutex));
-    //     printf("Unloading boat with ID: %d... Hours remaining: %.2f\n",
-    //            currentBoat->id, currentBoat->unloading_time);
-    //     sleep(currentBoat->unloading_time);
-    //     printf(
-    //         "Boat with ID: %d has finished unloading and has left the
-    //         port.\n", current_id);
-    //     free(currentBoat->destination);
-    //     free(currentBoat);
-    // }
+    while (true) {
+        sem_wait(&order->full);
+        sem_wait(&(order->mutex));
+        currentBoat = popBoat();
+        current_id = currentBoat->id;
+        write(currentBoat->connfd, &msg_length, sizeof(size_t));
+        write(currentBoat->connfd, message, msg_length);
+        serialize_queue(order->queue_str);
+        sem_post(&(order->mutex));
+        printf("Unloading boat with ID: %d... Hours remaining: %.2f\n",
+               currentBoat->id, currentBoat->unloading_time);
+        sleep(currentBoat->unloading_time);
+        printf(
+            "Boat with ID: %d has finished unloading and has left the port.\n",
+            current_id);
+        free(currentBoat->destination);
+        free(currentBoat);
+    }
 }
 
 Boat *popBoat() {
