@@ -8,7 +8,7 @@
 #include <string.h>
 
 #define INITIAL_STR_SIZE 8192
-#define MAX_BOAT_ENTRY_SIZE 200 // PRUEBA ESTO, EN EL GIT ESTA COMO 2000
+#define MAX_BOAT_ENTRY_SIZE 200
 
 #define MAX_CLIENTS 150
 
@@ -20,7 +20,7 @@ typedef struct {
     sem_t mutex;
     sem_t full;
     int next_id;
-} DockingOrder;
+} DockingQueue;
 
 void *workerThread(void *);
 void *unloaderThread(void *);
@@ -31,21 +31,21 @@ void serialize_queue(char *);
 Boat *popBoat();
 void broadcast_update(const char *);
 
-DockingOrder *order;
+DockingQueue *queue;
 int docks_number = 5;
 
 int main() {
     signal(SIGPIPE, SIG_IGN);
 
-    order = (DockingOrder *)malloc(sizeof(DockingOrder));
-    order->lowPriorityQueue = newList();
-    order->highPriorityQueue = newList();
-    order->str_capacity = INITIAL_STR_SIZE;
-    order->queue_str = (char *)malloc(order->str_capacity * sizeof(char));
-    order->queue_str[0] = '\0';
-    order->next_id = 0;
-    sem_init(&(order->mutex), 0, 1);
-    sem_init(&order->full, 0, 0);
+    queue = (DockingQueue *)malloc(sizeof(DockingQueue));
+    queue->lowPriorityQueue = newList();
+    queue->highPriorityQueue = newList();
+    queue->str_capacity = INITIAL_STR_SIZE;
+    queue->queue_str = (char *)malloc(queue->str_capacity * sizeof(char));
+    queue->queue_str[0] = '\0';
+    queue->next_id = 0;
+    sem_init(&(queue->mutex), 0, 1);
+    sem_init(&queue->full, 0, 0);
 
     struct sigaction sigintAction;
     sigintAction.sa_handler = sigint_handler;
@@ -89,10 +89,10 @@ void *workerThread(void *arg) {
     currentBoat->unloading_time = 0;
     currentBoat->connfd = connfd;
     size_t dest_length;
-    sem_wait(&(order->mutex));
-    currentBoat->id = order->next_id;
-    order->next_id++;
-    sem_post(&(order->mutex));
+    sem_wait(&(queue->mutex));
+    currentBoat->id = queue->next_id;
+    queue->next_id++;
+    sem_post(&(queue->mutex));
 
     if (write(connfd, &currentBoat->id, sizeof(int)) == -1) {
         printf("A boat broke before establishing connection.\n");
@@ -168,40 +168,40 @@ void *workerThread(void *arg) {
 }
 
 void enqueue_boat(Boat *currentBoat) {
-    sem_wait(&(order->mutex));
+    sem_wait(&(queue->mutex));
     if (currentBoat->toCheck &&
         strcmp(currentBoat->destination, "ecuador") != 0) {
-        tailInsert(order->highPriorityQueue, (void *)currentBoat);
+        tailInsert(queue->highPriorityQueue, (void *)currentBoat);
     } else {
-        tailInsert(order->lowPriorityQueue, (void *)currentBoat);
+        tailInsert(queue->lowPriorityQueue, (void *)currentBoat);
     }
-    if (MAX_BOAT_ENTRY_SIZE * (order->highPriorityQueue->length +
-                               order->lowPriorityQueue->length) >=
-        order->str_capacity) {
-        size_t new_capacity = order->str_capacity * 2;
-        char *new_queue_str = (char *)realloc(order->queue_str, new_capacity);
+    if (MAX_BOAT_ENTRY_SIZE * (queue->highPriorityQueue->length +
+                               queue->lowPriorityQueue->length) >=
+        queue->str_capacity) {
+        size_t new_capacity = queue->str_capacity * 2;
+        char *new_queue_str = (char *)realloc(queue->queue_str, new_capacity);
         if (new_queue_str == NULL) {
             fprintf(stderr, "Error: Memory allocation failed.\n");
             exit(EXIT_FAILURE);
         }
-        order->queue_str = new_queue_str;
-        order->str_capacity = new_capacity;
+        queue->queue_str = new_queue_str;
+        queue->str_capacity = new_capacity;
     }
-    serialize_queue(order->queue_str);
-    broadcast_update(order->queue_str);
-    sem_post(&(order->mutex));
-    sem_post(&order->full);
+    serialize_queue(queue->queue_str);
+    broadcast_update(queue->queue_str);
+    sem_post(&(queue->mutex));
+    sem_post(&queue->full);
 }
 
 void remove_boat(int id) {
-    sem_wait(&order->full);
-    sem_wait(&(order->mutex));
-    if (!deleteBoat(order->highPriorityQueue, id)) {
-        deleteBoat(order->lowPriorityQueue, id);
+    sem_wait(&queue->full);
+    sem_wait(&(queue->mutex));
+    if (!deleteBoat(queue->highPriorityQueue, id)) {
+        deleteBoat(queue->lowPriorityQueue, id);
     }
-    serialize_queue(order->queue_str);
-    broadcast_update(order->queue_str);
-    sem_post(&(order->mutex));
+    serialize_queue(queue->queue_str);
+    broadcast_update(queue->queue_str);
+    sem_post(&(queue->mutex));
 }
 
 void sigint_handler(int signum) {
@@ -212,15 +212,15 @@ void sigint_handler(int signum) {
 
 void serialize_queue(char *target) {
     target[0] = '\0';
-    if (order->highPriorityQueue->head == NULL &&
-        order->lowPriorityQueue->head == NULL) {
+    if (queue->highPriorityQueue->head == NULL &&
+        queue->lowPriorityQueue->head == NULL) {
         strcat(target, "The queue is clear!\n");
         return;
     }
     strcat(target, "PORT DOCKING QUEUE");
     char formatted[MAX_BOAT_ENTRY_SIZE];
     int turn = 1;
-    Node *current = order->highPriorityQueue->head;
+    Node *current = queue->highPriorityQueue->head;
     Boat *currentBoat;
     while (current != NULL) {
         currentBoat = (Boat *)current->n;
@@ -235,7 +235,7 @@ void serialize_queue(char *target) {
         turn++;
         current = current->next;
     }
-    current = order->lowPriorityQueue->head;
+    current = queue->lowPriorityQueue->head;
     while (current != NULL) {
         currentBoat = (Boat *)current->n;
         sprintf(formatted,
@@ -257,15 +257,15 @@ void *unloaderThread(void *arg) {
     int current_id;
     size_t msg_length = strlen(message);
     while (true) {
-        sem_wait(&order->full);
-        sem_wait(&(order->mutex));
+        sem_wait(&queue->full);
+        sem_wait(&(queue->mutex));
         currentBoat = popBoat();
         current_id = currentBoat->id;
         write(currentBoat->connfd, &msg_length, sizeof(size_t));
         write(currentBoat->connfd, message, msg_length);
-        serialize_queue(order->queue_str);
-        broadcast_update(order->queue_str);
-        sem_post(&(order->mutex));
+        serialize_queue(queue->queue_str);
+        broadcast_update(queue->queue_str);
+        sem_post(&(queue->mutex));
         printf("Unloading boat with ID: %d... Hours remaining: %.2f\n",
                currentBoat->id, currentBoat->unloading_time);
         sleep(currentBoat->unloading_time);
@@ -279,10 +279,10 @@ void *unloaderThread(void *arg) {
 
 Boat *popBoat() {
     Boat *boat = NULL;
-    if (order->highPriorityQueue->head != NULL) {
-        boat = (Boat *)pop(order->highPriorityQueue, 0);
-    } else if (order->lowPriorityQueue->head != NULL) {
-        boat = (Boat *)pop(order->lowPriorityQueue, 0);
+    if (queue->highPriorityQueue->head != NULL) {
+        boat = (Boat *)pop(queue->highPriorityQueue, 0);
+    } else if (queue->lowPriorityQueue->head != NULL) {
+        boat = (Boat *)pop(queue->lowPriorityQueue, 0);
     }
     return boat;
 }
@@ -292,7 +292,7 @@ void broadcast_update(const char *queue_str) {
     Node *current;
     Boat *currentBoat;
     size_t msg_length = strlen(queue_str);
-    current = order->highPriorityQueue->head;
+    current = queue->highPriorityQueue->head;
     while (current != NULL) {
         currentBoat = (Boat *)current->n;
         Node *nextNode = current->next;
@@ -301,13 +301,13 @@ void broadcast_update(const char *queue_str) {
             if (previous != NULL) {
                 previous->next = nextNode;
             } else {
-                order->highPriorityQueue->head = nextNode;
+                queue->highPriorityQueue->head = nextNode;
             }
 
             if (nextNode == NULL) {
-                order->highPriorityQueue->tail = previous;
+                queue->highPriorityQueue->tail = previous;
             }
-            order->highPriorityQueue->length--;
+            queue->highPriorityQueue->length--;
             free(currentBoat->destination);
             free(currentBoat);
             free(current);
@@ -317,7 +317,7 @@ void broadcast_update(const char *queue_str) {
         current = nextNode;
     }
     previous = NULL;
-    current = order->lowPriorityQueue->head;
+    current = queue->lowPriorityQueue->head;
 
     while (current != NULL) {
         currentBoat = (Boat *)current->n;
@@ -327,13 +327,13 @@ void broadcast_update(const char *queue_str) {
             if (previous != NULL) {
                 previous->next = nextNode;
             } else {
-                order->lowPriorityQueue->head = nextNode;
+                queue->lowPriorityQueue->head = nextNode;
             }
 
             if (nextNode == NULL) {
-                order->lowPriorityQueue->tail = previous;
+                queue->lowPriorityQueue->tail = previous;
             }
-            order->lowPriorityQueue->length--;
+            queue->lowPriorityQueue->length--;
             free(currentBoat->destination);
             free(currentBoat);
             free(current);

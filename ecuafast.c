@@ -419,7 +419,7 @@ void breachHull() {
 }
 
 void finish_client() {
-    printf("We have reached the port!\n");
+    printf("We have reached the port! Closing client...\n");
     char message[4] = "BYE";
     write(connections->adminfd, message, 3);
     close(connections->adminfd);
