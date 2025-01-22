@@ -121,6 +121,7 @@ void *workerThread(void *arg) {
         free(currentBoat);
         pthread_exit(NULL);
     }
+
     currentBoat->destination[dest_length] = '\0';
     printf("\n*******************************************************\n");
     printf("waiting for check\n");
@@ -143,11 +144,19 @@ void *workerThread(void *arg) {
            currentBoat->id, currentBoat->type, currentBoat->avg_weight,
            currentBoat->destination, currentBoat->toCheck,
            currentBoat->unloading_time);
-
     char message[4];
-    if (read(connfd, message, 3) <= 0 || strcmp(message, "DMG") == 0) {
-        printf("Boat with ID: %d has broken! removing from list...\n",
-               currentBoat->id);
+    ssize_t read_bytes = read(connfd, message, 3);
+    message[3] = '\0';
+    if (read_bytes <= 0 || strcmp(message, "DMG") == 0) {
+        if (read_bytes <= 0) {
+            printf(
+                "Boat with ID: %d has lost connection! removing from list...\n",
+                currentBoat->id);
+        } else {
+            printf("Boat with ID: %d has broken it's hull! removing from "
+                   "list...\n",
+                   currentBoat->id);
+        }
         remove_boat(currentBoat->id);
         pthread_exit(NULL);
     }
@@ -311,7 +320,7 @@ void broadcast_update(const char *queue_str) {
 
     while (current != NULL) {
         currentBoat = (Boat *)current->n;
-        Node *nextNode = current->next; 
+        Node *nextNode = current->next;
         if (write(currentBoat->connfd, &msg_length, sizeof(size_t)) == -1 ||
             write(currentBoat->connfd, queue_str, msg_length) == -1) {
             if (previous != NULL) {

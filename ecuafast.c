@@ -45,7 +45,7 @@ int responseCounter;
 sem_t counterMutex;
 sem_t commitMutex;
 sem_t greenlightMutex;
-sem_t connectionMutex;
+sem_t damageMutex;
 Connections *connections;
 pthread_t request_tid, admin_tid;
 pthread_t sri_tid, senae_tid, supercia_tid;
@@ -178,7 +178,7 @@ int main(int argc, char *argv[]) {
 
     sem_init(&greenlightMutex, 0, 1);
     sem_wait(&greenlightMutex);
-    sem_init(&connectionMutex, 0, 0);
+    sem_init(&damageMutex, 0, 0);
 
     struct sigaction sa;
     sa.sa_handler = handle_sigint_on_agency_check;
@@ -206,15 +206,15 @@ int main(int argc, char *argv[]) {
     sem_post(&greenlightMutex);
     sem_destroy(&counterMutex);
     printf("supposedly gave signal...\n");
+    sem_wait(&damageMutex);
     srand((unsigned int)time(NULL));
-    sem_wait(&connectionMutex);
     int random_int;
     while (1) {
+        sleep(10);
         random_int = rand() % 100;
-        if (random_int < 5) { 
+        if (random_int < 5) {
             breachHull();
         }
-        sleep(10);
     }
     pthread_join(admin_tid, NULL);
     return 0;
@@ -295,7 +295,7 @@ void *startTimeout() {
 void *connectToPortAdmin(void *arg) {
     connections->adminfd = open_clientfd(PORTADMIN_HOSTNAME, PORTADMIN_PORT);
     printf("Initiated communication with portuary administration.\n");
-    if(read(connections->adminfd, &(myBoat->id), sizeof(int)) < 0){
+    if (read(connections->adminfd, &(myBoat->id), sizeof(int)) < 0) {
         printf("Port administration is unreachable.\n");
         free(myBoat);
         sem_destroy(&counterMutex);
@@ -329,7 +329,7 @@ void *connectToPortAdmin(void *arg) {
     write(connections->adminfd, &(myBoat->toCheck), sizeof(bool));
     printf("supposedly written..\n");
     write(connections->adminfd, &(myBoat->unloading_time), sizeof(double));
-    sem_post(&connectionMutex);
+    sem_post(&damageMutex);
     char *server_message;
     size_t msg_length;
     while (true) {
@@ -337,7 +337,7 @@ void *connectToPortAdmin(void *arg) {
         server_message = (char *)malloc(msg_length * sizeof(char) + 1);
         read(connections->adminfd, server_message, msg_length);
         server_message[msg_length] = '\0';
-        if(strcmp(server_message, "DOCKED") == 0){
+        if (strcmp(server_message, "DOCKED") == 0) {
             finish_client();
         }
         printf("\n%s", server_message);
@@ -395,6 +395,9 @@ void handle_sigint_on_agency_check(int sig) {
     rollback();
     free(myBoat);
     sem_destroy(&counterMutex);
+    sem_destroy(&commitMutex);
+    sem_destroy(&greenlightMutex);
+    sem_destroy(&damageMutex);
     free(connections);
     exit(0);
 }
@@ -407,6 +410,9 @@ void breachHull() {
     char message[4] = "DMG";
     write(connections->adminfd, message, 3);
     close(connections->adminfd);
+    sem_destroy(&commitMutex);
+    sem_destroy(&greenlightMutex);
+    sem_destroy(&damageMutex);
     free(myBoat);
     free(connections);
     exit(0);
@@ -415,6 +421,9 @@ void breachHull() {
 void finish_client() {
     printf("We have reached the port!\n");
     close(connections->adminfd);
+    sem_destroy(&commitMutex);
+    sem_destroy(&greenlightMutex);
+    sem_destroy(&damageMutex);
     free(myBoat);
     free(connections);
     exit(0);
