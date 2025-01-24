@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 typedef struct node {
     void *n; /* data field(s) */

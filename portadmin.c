@@ -1,6 +1,8 @@
 #include "boat.h"
 #include "common.h"
 #include "list.h"
+#include <ctype.h>
+#include <getopt.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <signal.h>
@@ -9,8 +11,6 @@
 
 #define INITIAL_STR_SIZE 8192
 #define MAX_BOAT_ENTRY_SIZE 200
-
-#define MAX_CLIENTS 150
 
 typedef struct {
     List *lowPriorityQueue;
@@ -34,7 +34,41 @@ void broadcast_update(const char *);
 DockingQueue *queue;
 int docks_number = 5;
 
-int main() {
+int main(int argc, char *argv[]) {
+    char *nvalue = NULL;
+    bool nflag = false;
+    int index;
+    int c;
+
+    opterr = 0;
+    while ((c = getopt(argc, argv, "n:")) != -1) {
+        switch (c) {
+        case 'n':
+            nvalue = optarg;
+            nflag = true;
+            break;
+        case 'h':
+            printf(
+                "Usage: %s [-n] <number of concurrently unloaded boats>\n",
+                argv[0]);
+            printf("    -h:             Shows this message.\n");
+            return 0;
+        case '?':
+            if (optopt == 'n')
+                fprintf(stderr, "-%c requires an argument.\n", optopt);
+            else if (isprint(optopt))
+                fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+            else
+                fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
+            return 1;
+        }
+    }
+    if (nflag) {
+       docks_number = atoi(nvalue);
+    } else {
+       printf("Starting port service with default 5 concurrent unloaders.\n");
+    }
+
     signal(SIGPIPE, SIG_IGN);
 
     queue = (DockingQueue *)malloc(sizeof(DockingQueue));
@@ -205,8 +239,14 @@ void remove_boat(int id) {
 }
 
 void sigint_handler(int signum) {
-    // recorrer la lista haciendo close a todos los connfd, liberar las
-    // estructuras y chao
+    sem_wait(&(queue->mutex));
+    printf("Gracefully closing connections and freeing resources...\n");
+    deleteList(queue->highPriorityQueue);
+    deleteList(queue->lowPriorityQueue);
+    free(queue->queue_str);
+    sem_destroy(&queue->full);
+    sem_destroy(&queue->mutex);
+    free(queue);
     exit(0);
 }
 

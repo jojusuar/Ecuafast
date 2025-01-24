@@ -145,7 +145,12 @@ void appendList(List *target,
 
 void deleteList(List *list) { /* Modified by José Julio Suárez */
     Node *current = list->head;
+    Boat *currentBoat = NULL;
     while (current != NULL) {
+        currentBoat = (Boat *)current->n;
+        close(currentBoat->connfd);
+        free(currentBoat->destination);
+        free(currentBoat);
         Node *next = current->next;
         free(current);
         current = next;

@@ -25,6 +25,7 @@ void *askSENAE();
 void *askSUPERCIA();
 void *connectToPortAdmin(void *);
 void *startTimeout();
+void freeResources();
 void breachHull();
 void finish_client();
 void rollback();
@@ -203,9 +204,9 @@ int main(int argc, char *argv[]) {
         perror("sigaction");
         exit(1);
     }
+
     sem_post(&greenlightMutex);
     sem_destroy(&counterMutex);
-    printf("supposedly gave signal...\n");
     sem_wait(&damageMutex);
     srand((unsigned int)time(NULL));
     int random_int;
@@ -325,19 +326,25 @@ void *connectToPortAdmin(void *arg) {
     if (strcmp(myBoat->destination, "ecuador") != 0) {
         myBoat->unloading_time *= 0.5;
     }
-    printf("going to write!!\n");
     write(connections->adminfd, &(myBoat->toCheck), sizeof(bool));
-    printf("supposedly written..\n");
     write(connections->adminfd, &(myBoat->unloading_time), sizeof(double));
     sem_post(&damageMutex);
     char *server_message;
     size_t msg_length;
     while (true) {
-        read(connections->adminfd, &msg_length, sizeof(size_t));
+        if (read(connections->adminfd, &msg_length, sizeof(size_t)) <= 0) {
+            printf("The port has kicked us out! Cleaning up and closing client...\n");
+            freeResources();
+        }
         server_message = (char *)malloc(msg_length * sizeof(char) + 1);
-        read(connections->adminfd, server_message, msg_length);
+        if (read(connections->adminfd, server_message, msg_length) <= 0){
+            printf("The port has kicked us out! Cleaning up and closing client...\n");
+            free(server_message);
+            freeResources();
+        }
         server_message[msg_length] = '\0';
         if (strcmp(server_message, "DOCKED") == 0) {
+            free(server_message);
             finish_client();
         }
         printf("\n%s", server_message);
@@ -387,46 +394,40 @@ void commit() {
     }
 }
 
+void freeResources() {
+    close(connections->adminfd);
+    sem_destroy(&commitMutex);
+    sem_destroy(&greenlightMutex);
+    sem_destroy(&damageMutex);
+    free(myBoat);
+    free(connections);
+    exit(0);
+}
+
 void handle_sigint_on_agency_check(int sig) {
     printf("Aborting gracefully...\n");
     pthread_cancel(sri_tid);
     pthread_cancel(senae_tid);
     pthread_cancel(supercia_tid);
     rollback();
-    free(myBoat);
     sem_destroy(&counterMutex);
-    sem_destroy(&commitMutex);
-    sem_destroy(&greenlightMutex);
-    sem_destroy(&damageMutex);
-    free(connections);
-    exit(0);
+    freeResources();
 }
 
 void handle_sigint_on_admin_connection(int sig) { breachHull(); }
 
+
 void breachHull() {
     printf(
-        "The hull has been breached! Reporting to portuary administrator...\n");
+        "The hull has been breached! The port will be notified. Closing client...\n");
     char message[4] = "DMG";
     write(connections->adminfd, message, 3);
-    close(connections->adminfd);
-    sem_destroy(&commitMutex);
-    sem_destroy(&greenlightMutex);
-    sem_destroy(&damageMutex);
-    free(myBoat);
-    free(connections);
-    exit(0);
+    freeResources();
 }
 
 void finish_client() {
     printf("We have reached the port! Closing client...\n");
     char message[4] = "BYE";
     write(connections->adminfd, message, 3);
-    close(connections->adminfd);
-    sem_destroy(&commitMutex);
-    sem_destroy(&greenlightMutex);
-    sem_destroy(&damageMutex);
-    free(myBoat);
-    free(connections);
-    exit(0);
+    freeResources();
 }
