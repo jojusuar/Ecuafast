@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
     bool tflag = false;
     int index;
     int c;
-
+     printf("***********SENAE***********\n\n");
     opterr = 0;
     while ((c = getopt(argc, argv, "f:t:")) != -1) {
         switch (c) {

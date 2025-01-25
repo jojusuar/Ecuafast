@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
     bool tflag = false;
     int index;
     int c;
-
+    printf("***********SUPERCIA***********\n\n");
     opterr = 0;
     while ((c = getopt(argc, argv, "f:t:")) != -1) {
         switch (c) {

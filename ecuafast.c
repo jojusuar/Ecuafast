@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
     bool uflag = false;
     int index;
     int c;
-
+    printf("***********ECUAFAST***********\n\n");
     opterr = 0;
     while ((c = getopt(argc, argv, "c:w:d:t:u:")) != -1) {
         switch (c) {
