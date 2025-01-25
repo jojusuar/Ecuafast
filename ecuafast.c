@@ -41,7 +41,7 @@ typedef struct {
 } Connections;
 
 Boat *myBoat;
-int timeout;
+int timeout = 5;
 int responseCounter;
 sem_t counterMutex;
 sem_t commitMutex;
@@ -58,15 +58,17 @@ int main(int argc, char *argv[]) {
     char *wvalue = NULL;
     char *dvalue = NULL;
     char *tvalue = NULL;
+    char *uvalue = NULL;
     bool cflag = false;
     bool wflag = false;
     bool dflag = false;
     bool tflag = false;
+    bool uflag = false;
     int index;
     int c;
 
     opterr = 0;
-    while ((c = getopt(argc, argv, "c:w:d:t:")) != -1) {
+    while ((c = getopt(argc, argv, "c:w:d:t:u:")) != -1) {
         switch (c) {
         case 'c':
             cvalue = optarg;
@@ -84,22 +86,26 @@ int main(int argc, char *argv[]) {
             tvalue = optarg;
             tflag = true;
             break;
+        case 'u':
+            uvalue = optarg;
+            uflag = true;
+            break;
         case 'h':
-            printf("Usage: %s -c <boat class> -w <avg. weight> -d "
-                   "<destination> -t "
-                   "<response timeout (seconds)>\n",
+            printf("Usage: %s [-c] <boat class> [-w] <avg. weight> [-d] "
+                   "<destination> [-t] "
+                   "<response timeout (seconds)> [-u] <cargo unloading time>\n",
                    argv[0]);
             printf("    -h:             Shows this message.\n");
             return 0;
         case '?':
             if (optopt == 't')
-                fprintf(stderr, "-%c requires an argument.\n", optopt);
+                break;
             if (optopt == 'c')
-                fprintf(stderr, "-%c requires an argument.\n", optopt);
+                break;
             if (optopt == 'w')
-                fprintf(stderr, "-%c requires an argument.\n", optopt);
+                break;
             if (optopt == 'd')
-                fprintf(stderr, "-%c requires an argument.\n", optopt);
+                break;
             else if (isprint(optopt))
                 fprintf(stderr, "Unknown option `-%c'.\n", optopt);
             else
@@ -118,27 +124,20 @@ int main(int argc, char *argv[]) {
             myBoat->type = PANAMAX;
             break;
         default:
-            free(myBoat);
-            fprintf(stderr, "Invalid boat type.\n");
-            return 1;
+            myBoat->type = CONVENTIONAL;
+            printf("Invalid boat class, creating boat with default class 0 "
+                   "(CONVENTIONAL).\n");
         }
     } else {
-        fprintf(
-            stderr,
-            "Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t "
-            "<response timeout (seconds)>\n",
-            argv[0]);
-        exit(1);
+        myBoat->type = CONVENTIONAL;
+        printf("Creating boat with default class 0 (CONVENTIONAL).\n");
     }
     if (wflag) {
         myBoat->avg_weight = atof(wvalue);
     } else {
-        fprintf(
-            stderr,
-            "Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t "
-            "<response timeout (seconds)>\n",
-            argv[0]);
-        exit(1);
+        myBoat->avg_weight = 220.75;
+        printf("Creating boat with default weight = 220.75 units.\n");
+
     }
     if (dflag) {
         for (int i = 0; dvalue[i]; i++) {
@@ -146,25 +145,24 @@ int main(int argc, char *argv[]) {
         }
         myBoat->destination = dvalue;
     } else {
-        fprintf(
-            stderr,
-            "Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t "
-            "<response timeout (seconds)>\n",
-            argv[0]);
-        exit(1);
+        myBoat->destination = "ecuador";
+        printf("Creating boat with default destination ECUADOR.\n");
     }
     if (tflag) {
         timeout = atoi(tvalue);
     } else {
-        fprintf(
-            stderr,
-            "Usage: %s -c <boat class> -w <avg. weight> -d <destination> -t "
-            "<response timeout (seconds)>\n",
-            argv[0]);
-        exit(1);
+        timeout = 5;
+        printf("Boat will listen to agencies' responses for default time = 10 seconds.\n");
+    }
+    if(uflag) {
+        myBoat->unloading_time = atof(uvalue);
+    }
+    else {
+        printf("Creating boat with default cargo unloading time = 10 seconds.\n");
+        myBoat->unloading_time = 10;
     }
     myBoat->toCheck = false;
-    myBoat->unloading_time = 10;
+    
 
     sem_init(&counterMutex, 0, 1);
     sem_init(&commitMutex, 0, -2);
@@ -333,12 +331,14 @@ void *connectToPortAdmin(void *arg) {
     size_t msg_length;
     while (true) {
         if (read(connections->adminfd, &msg_length, sizeof(size_t)) <= 0) {
-            printf("The port has kicked us out! Cleaning up and closing client...\n");
+            printf("The port has kicked us out! Cleaning up and closing "
+                   "client...\n");
             freeResources();
         }
         server_message = (char *)malloc(msg_length * sizeof(char) + 1);
-        if (read(connections->adminfd, server_message, msg_length) <= 0){
-            printf("The port has kicked us out! Cleaning up and closing client...\n");
+        if (read(connections->adminfd, server_message, msg_length) <= 0) {
+            printf("The port has kicked us out! Cleaning up and closing "
+                   "client...\n");
             free(server_message);
             freeResources();
         }
@@ -416,18 +416,21 @@ void handle_sigint_on_agency_check(int sig) {
 
 void handle_sigint_on_admin_connection(int sig) { breachHull(); }
 
-
 void breachHull() {
-    printf(
-        "The hull has been breached! The port will be notified. Closing client...\n");
+    printf("The hull has been breached! The port will be notified. Closing "
+           "client...\n");
     char message[4] = "DMG";
-    write(connections->adminfd, message, 3);
+    size_t msg_len = strlen(message);
+    write(connections->adminfd, &msg_len, sizeof(size_t));
+    write(connections->adminfd, message, msg_len);
     freeResources();
 }
 
 void finish_client() {
     printf("We have reached the port! Closing client...\n");
     char message[4] = "BYE";
-    write(connections->adminfd, message, 3);
+    size_t msg_len = strlen(message);
+    write(connections->adminfd, &msg_len, sizeof(size_t));
+    write(connections->adminfd, message, msg_len);
     freeResources();
 }

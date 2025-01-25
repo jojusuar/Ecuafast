@@ -52,16 +52,16 @@ int main(int argc, char *argv[]) {
             tflag = true;
             break;
         case 'h':
-            printf("Usage: %s -f <response latency floor> -t <response latency "
+            printf("Usage: %s [-f] <response latency floor> [-t] <response latency "
                    "top>\n",
                    argv[0]);
             printf("    -h:             Shows this message.\n");
             return 0;
         case '?':
             if (optopt == 'f')
-                fprintf(stderr, "-%c requires an argument.\n", optopt);
+                break;
             if (optopt == 't')
-                fprintf(stderr, "-%c requires an argument.\n", optopt);
+                break;
             else if (isprint(optopt))
                 fprintf(stderr, "Unknown option `-%c'.\n", optopt);
             else
@@ -72,20 +72,14 @@ int main(int argc, char *argv[]) {
     if (fflag) {
         min_latency = atoi(fvalue);
     } else {
-        fprintf(stderr,
-                "Usage: %s -f <response latency floor (seconds)> -t <response "
-                "latency top (seconds)>\n",
-                argv[0]);
-        return 1;
+        min_latency = 0;
+        printf("Starting up service with default minimum response latency = 0 seconds.\n");
     }
     if (tflag) {
         max_latency = atoi(tvalue);
     } else {
-        fprintf(stderr,
-                "Usage: %s -f <response latency floor (seconds)> -t <response "
-                "latency top (seconds)>\n",
-                argv[0]);
-        return 1;
+        max_latency = 6;
+        printf("Starting up service with default maximum response latency = 6 seconds.\n");
     }
 
     bool cleanbuffer = access(BUFFER_FILE, F_OK) != 0;

@@ -6,7 +6,7 @@ TARGET1 = sri
 TARGET2 = ecuafast
 TARGET3 = senae
 TARGET4 = supercia
-TARGET5 = testbarcos
+TARGET5 = boatgenerator
 TARGET6 = portadmin
 TARGETS = $(TARGET1) $(TARGET2) $(TARGET3) $(TARGET4) $(TARGET5) $(TARGET6)
 
@@ -14,7 +14,7 @@ SRCS1 = sri.c common.c
 SRCS2 = ecuafast.c
 SRCS3 = senae.c common.c heap.c
 SRCS4 = supercia.c common.c
-SRCS5 = testbarcos.c
+SRCS5 = boatgenerator.c
 SRCS6 = portadmin.c common.c list.c
 
 OBJS1 = $(SRCS1:.c=.o)

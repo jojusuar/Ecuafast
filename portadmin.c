@@ -30,6 +30,7 @@ void sigint_handler(int);
 void serialize_queue(char *);
 Boat *popBoat();
 void broadcast_update(const char *);
+void sendToNodes(const char *, List *);
 
 DockingQueue *queue;
 int docks_number = 5;
@@ -48,9 +49,8 @@ int main(int argc, char *argv[]) {
             nflag = true;
             break;
         case 'h':
-            printf(
-                "Usage: %s [-n] <number of concurrently unloaded boats>\n",
-                argv[0]);
+            printf("Usage: %s [-n] <number of concurrently unloaded boats>\n",
+                   argv[0]);
             printf("    -h:             Shows this message.\n");
             return 0;
         case '?':
@@ -64,9 +64,9 @@ int main(int argc, char *argv[]) {
         }
     }
     if (nflag) {
-       docks_number = atoi(nvalue);
+        docks_number = atoi(nvalue);
     } else {
-       printf("Starting port service with default 5 concurrent unloaders.\n");
+        printf("Starting port service with default 5 concurrent unloaders.\n");
     }
 
     signal(SIGPIPE, SIG_IGN);
@@ -178,24 +178,34 @@ void *workerThread(void *arg) {
            currentBoat->id, currentBoat->type, currentBoat->avg_weight,
            currentBoat->destination, currentBoat->toCheck,
            currentBoat->unloading_time);
-    char message[4];
-    ssize_t read_bytes = read(connfd, message, 3);
-    message[3] = '\0';
-    if (read_bytes <= 0 || strcmp(message, "DMG") == 0) {
-        if (read_bytes <= 0) {
-            printf(
-                "Boat with ID: %d has lost connection! removing from list...\n",
-                currentBoat->id);
-        } else {
-            printf("Boat with ID: %d has broken it's hull! removing from "
-                   "list...\n",
-                   currentBoat->id);
-        }
+
+    char *message;
+    size_t msg_length;
+    if (read(connfd, &msg_length, sizeof(size_t)) <= 0) {
+        printf("Boat with ID: %d has lost connection! removing from list...\n",
+               currentBoat->id);
         remove_boat(currentBoat->id);
         pthread_exit(NULL);
     }
-    else if(strcmp(message, "BYE") == 0){
+    message = (char *)malloc((msg_length + 1) * sizeof(char));
+    if (read(connfd, message, msg_length) <= 0) {
+        printf("Boat with ID: %d has lost connection! removing from list...\n",
+               currentBoat->id);
+        free(message);
+        remove_boat(currentBoat->id);
+        pthread_exit(NULL);
+    }
+    message[msg_length] = '\0';
+    if (strcmp(message, "DMG") == 0) {
+        printf("Boat with ID: %d has broken it's hull! removing from "
+               "list...\n",
+               currentBoat->id);
+        free(message);
+        remove_boat(currentBoat->id);
+        pthread_exit(NULL);
+    } else if (strcmp(message, "BYE") == 0) {
         printf("Gracefully ended connection with ID: %d\n", currentBoat->id);
+        free(message);
         close(currentBoat->connfd);
         pthread_exit(NULL);
     }
@@ -216,7 +226,13 @@ void enqueue_boat(Boat *currentBoat) {
         char *new_queue_str = (char *)realloc(queue->queue_str, new_capacity);
         if (new_queue_str == NULL) {
             fprintf(stderr, "Error: Memory allocation failed.\n");
-            exit(EXIT_FAILURE);
+            deleteList(queue->highPriorityQueue);
+            deleteList(queue->lowPriorityQueue);
+            free(queue->queue_str);
+            sem_destroy(&queue->full);
+            sem_destroy(&queue->mutex);
+            free(queue);
+            exit(1);
         }
         queue->queue_str = new_queue_str;
         queue->str_capacity = new_capacity;
@@ -306,7 +322,7 @@ void *unloaderThread(void *arg) {
         serialize_queue(queue->queue_str);
         broadcast_update(queue->queue_str);
         sem_post(&(queue->mutex));
-        printf("Unloading boat with ID: %d... Hours remaining: %.2f\n",
+        printf("Unloading boat with ID: %d... Seconds remaining: %.2f\n",
                currentBoat->id, currentBoat->unloading_time);
         sleep(currentBoat->unloading_time);
         printf(
@@ -328,52 +344,30 @@ Boat *popBoat() {
 }
 
 void broadcast_update(const char *queue_str) {
+    sendToNodes(queue_str, queue->highPriorityQueue);
+    sendToNodes(queue_str, queue->lowPriorityQueue);
+}
+
+void sendToNodes(const char *str, List *queue) {
     Node *previous = NULL;
     Node *current;
     Boat *currentBoat;
-    size_t msg_length = strlen(queue_str);
-    current = queue->highPriorityQueue->head;
+    size_t msg_length = strlen(str);
+    current = queue->head;
     while (current != NULL) {
         currentBoat = (Boat *)current->n;
         Node *nextNode = current->next;
         if (write(currentBoat->connfd, &msg_length, sizeof(size_t)) == -1 ||
-            write(currentBoat->connfd, queue_str, msg_length) == -1) {
+            write(currentBoat->connfd, str, msg_length) == -1) {
             if (previous != NULL) {
                 previous->next = nextNode;
             } else {
-                queue->highPriorityQueue->head = nextNode;
+                queue->head = nextNode;
             }
-
             if (nextNode == NULL) {
-                queue->highPriorityQueue->tail = previous;
+                queue->tail = previous;
             }
-            queue->highPriorityQueue->length--;
-            free(currentBoat->destination);
-            free(currentBoat);
-            free(current);
-        } else {
-            previous = current;
-        }
-        current = nextNode;
-    }
-    previous = NULL;
-    current = queue->lowPriorityQueue->head;
-
-    while (current != NULL) {
-        currentBoat = (Boat *)current->n;
-        Node *nextNode = current->next;
-        if (write(currentBoat->connfd, &msg_length, sizeof(size_t)) == -1 ||
-            write(currentBoat->connfd, queue_str, msg_length) == -1) {
-            if (previous != NULL) {
-                previous->next = nextNode;
-            } else {
-                queue->lowPriorityQueue->head = nextNode;
-            }
-
-            if (nextNode == NULL) {
-                queue->lowPriorityQueue->tail = previous;
-            }
-            queue->lowPriorityQueue->length--;
+            queue->length--;
             free(currentBoat->destination);
             free(currentBoat);
             free(current);
