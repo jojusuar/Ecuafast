@@ -1,10 +1,11 @@
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-#include <sys/wait.h>
 
 void sigint_handler(int);
 
@@ -17,10 +18,23 @@ int main() {
         perror("sigaction");
         exit(1);
     }
-
+    printf("Hi! 100 boats will be generated, then the 101th will be opened in "
+           "a new window\n for you to see it's progress in the queue.\n\n");
     for (int i = 0; i < 100; i++) {
+        printf("Creating boat nbr. %d...\n", i + 1);
         if (fork() == 0) {
             srand((unsigned int)(time(NULL) ^ getpid()));
+            int dev_null = open("/dev/null", O_WRONLY);
+            if (dev_null == -1) {
+                perror("open");
+                return 1;
+            }
+
+            // Redirect stdout to /dev/null
+            if (dup2(dev_null, STDOUT_FILENO) == -1) {
+                perror("dup2");
+                return 1;
+            }
             int class = rand() % 2;
             char classstr[2];
             sprintf(classstr, "%d", class);
@@ -57,9 +71,20 @@ int main() {
             exit(1);
         }
 
-        usleep(500000);
+        usleep(50000);
     }
-    while (wait(NULL) > 0);
+    printf("Boats generated. Launching a new window for the last \n one (it "
+           "may make the queue faster than other boats).\n\nPress Ctrl+C to "
+           "terminate all but the last one.\n");
+
+    char command[256];
+    snprintf(command, sizeof(command),
+             "gnome-terminal -- bash -c './ecuafast -c 1 -w 22.76 -d ecuador "
+             "-t 10; exec bash'");
+    system(command);
+    while (wait(NULL) > 0)
+        ;
+    printf("All boats have finished their transactions.\n");
     return 0;
 }
 

@@ -32,6 +32,7 @@ void rollback();
 void commit();
 void handle_sigint_on_agency_check(int);
 void handle_sigint_on_admin_connection(int);
+void truncateMessage(char *message, const char *myEntry);
 
 typedef struct {
     int srifd;
@@ -347,6 +348,10 @@ void *connectToPortAdmin(void *arg) {
             free(server_message);
             finish_client();
         }
+        char myEntry[10];
+        sprintf(myEntry, "ID: %d", myBoat->id);
+        truncateMessage(server_message, myEntry);
+        strcat(server_message, " (YOU)\n");
         printf("\n%s", server_message);
         free(server_message);
     }
@@ -433,4 +438,11 @@ void finish_client() {
     write(connections->adminfd, &msg_len, sizeof(size_t));
     write(connections->adminfd, message, msg_len);
     freeResources();
+}
+
+void truncateMessage(char *input, const char *marker) {
+    char *position = strstr(input, marker);
+    if (position != NULL) {
+        *(position + strlen(marker)) = '\0';
+    }
 }
