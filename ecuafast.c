@@ -33,7 +33,8 @@ void rollback();
 void commit();
 void handle_sigint_on_agency_check(int);
 void handle_sigint_on_admin_connection(int);
-void truncateMessage(char *message, const char *myEntry);
+void truncateMessage(char *, const char *);
+void notifyTransaction(char *);
 
 typedef struct {
     int srifd;
@@ -378,26 +379,15 @@ void askAgency(int connfd, char *response) {
 
 void rollback() {
     char message[MAX_MESSAGE_LENGTH + 1] = "ROLLBK";
-    size_t message_length = MAX_MESSAGE_LENGTH;
-    if (connections->srifd > -1) {
-        write(connections->srifd, &message_length, sizeof(size_t));
-        write(connections->srifd, message, message_length);
-        close(connections->srifd);
-    }
-    if (connections->senaefd > -1) {
-        write(connections->senaefd, &message_length, sizeof(size_t));
-        write(connections->senaefd, message, message_length);
-        close(connections->senaefd);
-    }
-    if (connections->superciafd > -1) {
-        write(connections->superciafd, &message_length, sizeof(size_t));
-        write(connections->superciafd, message, message_length);
-        close(connections->superciafd);
-    }
+    notifyTransaction(message);
 }
 
 void commit() {
     char message[MAX_MESSAGE_LENGTH + 1] = "COMMIT";
+    notifyTransaction(message);
+}
+
+void notifyTransaction(char *message){
     size_t message_length = MAX_MESSAGE_LENGTH;
     if (connections->srifd > -1) {
         write(connections->srifd, &message_length, sizeof(size_t));

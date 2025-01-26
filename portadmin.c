@@ -33,7 +33,7 @@ void broadcast_update(const char *);
 void sendToNodes(const char *, List *);
 
 DockingQueue *queue;
-int docks_number = 5;
+int docks_number;
 
 int main(int argc, char *argv[]) {
     char *nvalue = NULL;
@@ -66,6 +66,7 @@ int main(int argc, char *argv[]) {
     if (nflag) {
         docks_number = atoi(nvalue);
     } else {
+        docks_number = 5;
         printf("Starting port service with default 5 concurrent unloaders.\n");
     }
 
