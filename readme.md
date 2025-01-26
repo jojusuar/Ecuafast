@@ -19,8 +19,8 @@ Execute `$ make` on a Bash terminal.
 When the services are up and `./ecuafast` is executed, the Ecuafast client
 will display on the terminal the status of its requests to the various agencies' servers
 and the port administratior server. Shortly after, the docking queue and all
-updates to it will be displayed. When the boat is scheduled to dock, the client will
-inform it through the terminal and terminate itself.
+updates to it will be displayed. When the boat reaches the front of the queue, the client 
+will inform it through the terminal and terminate itself.
 
 Likewise, the terminal window of each server (agency or port) will display
 status updates. Press Ctrl+C to gracefully close them at any time.
