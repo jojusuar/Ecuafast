@@ -18,6 +18,7 @@
 #define SUPERCIA_PORT "8082"
 #define PORTADMIN_HOSTNAME "127.0.0.1"
 #define PORTADMIN_PORT "8083"
+#define MAX_MESSAGE_LENGTH  6
 
 void askAgency(int, char *);
 void *askSRI();
@@ -42,7 +43,7 @@ typedef struct {
 } Connections;
 
 Boat *myBoat;
-int timeout = 5;
+int timeout;
 int responseCounter;
 sem_t counterMutex;
 sem_t commitMutex;
@@ -51,7 +52,7 @@ sem_t damageMutex;
 Connections *connections;
 pthread_t request_tid, admin_tid;
 pthread_t sri_tid, senae_tid, supercia_tid;
-char sriResult[6], senaeResult[6], superciaResult[6];
+char sriResult[MAX_MESSAGE_LENGTH], senaeResult[MAX_MESSAGE_LENGTH], superciaResult[MAX_MESSAGE_LENGTH];
 
 int main(int argc, char *argv[]) {
     printf("Starting...\n");
@@ -153,7 +154,7 @@ int main(int argc, char *argv[]) {
         timeout = atoi(tvalue);
     } else {
         timeout = 5;
-        printf("Boat will listen to agencies' responses for default time = 10 seconds.\n");
+        printf("Boat will listen to agencies' responses for default time = 5 seconds.\n");
     }
     if(uflag) {
         myBoat->unloading_time = atof(uvalue);
@@ -364,37 +365,53 @@ void askAgency(int connfd, char *response) {
     int dest_length = strlen(myBoat->destination);
     write(connfd, &(dest_length), sizeof(int));
     write(connfd, myBoat->destination, dest_length);
-    ssize_t bytes_read = read(connfd, response, 5);
+    size_t response_length;
+    read(connfd, &response_length, sizeof(size_t));
+    if(response_length > MAX_MESSAGE_LENGTH){
+        printf("Invalid message size received.\n");
+        pthread_exit(NULL);
+    }
+    read(connfd, response, response_length);
     sem_wait(&counterMutex);
-    response[bytes_read] = '\0';
+    response[response_length] = '\0';
 }
 
 void rollback() {
+    char message[MAX_MESSAGE_LENGTH + 1] = "ROLLBK";
+    size_t message_length = MAX_MESSAGE_LENGTH;
     if (connections->srifd > -1) {
-        write(connections->srifd, "ROLLBK", 6);
+        write(connections->srifd, &message_length, sizeof(size_t));
+        write(connections->srifd, message, message_length);
         close(connections->srifd);
     }
     if (connections->senaefd > -1) {
-        write(connections->senaefd, "ROLLBK", 6);
+        write(connections->senaefd, &message_length, sizeof(size_t));
+        write(connections->senaefd, message, message_length);
         close(connections->senaefd);
     }
     if (connections->superciafd > -1) {
-        write(connections->superciafd, "ROLLBK", 6);
+        write(connections->superciafd, &message_length, sizeof(size_t));
+        write(connections->superciafd, message, message_length);
         close(connections->superciafd);
     }
 }
 
 void commit() {
+    char message[MAX_MESSAGE_LENGTH + 1] = "COMMIT";
+    size_t message_length = MAX_MESSAGE_LENGTH;
     if (connections->srifd > -1) {
-        write(connections->srifd, "COMMIT", 6);
+        write(connections->srifd, &message_length, sizeof(size_t));
+        write(connections->srifd, message, message_length);
         close(connections->srifd);
     }
     if (connections->senaefd > -1) {
-        write(connections->senaefd, "COMMIT", 6);
+        write(connections->senaefd, &message_length, sizeof(size_t));
+        write(connections->senaefd, message, message_length);
         close(connections->senaefd);
     }
     if (connections->superciafd > -1) {
-        write(connections->superciafd, "COMMIT", 6);
+        write(connections->superciafd, &message_length, sizeof(size_t));
+        write(connections->superciafd, message, message_length);
         close(connections->superciafd);
     }
 }

@@ -14,6 +14,7 @@
 
 #define EPSILON 1e-9
 #define BUFFER_FILE "data/senae/buffer.bin"
+#define MAX_MESSAGE_LENGTH 6
 
 typedef struct {
     Heap *minHeap;
@@ -78,8 +79,8 @@ int main(int argc, char *argv[]) {
     if (tflag) {
         max_latency = atoi(tvalue);
     } else {
-        max_latency = 6;
-        printf("Starting up service with default maximum response latency = 6 seconds.\n");
+        max_latency = 5;
+        printf("Starting up service with default maximum response latency = 5 seconds.\n");
     }
 
     bool cleanbuffer = access(BUFFER_FILE, F_OK) != 0;
@@ -177,13 +178,28 @@ void *workerThread(void *arg) {
     int latency = min_latency + rand() % (max_latency - min_latency + 1);
     sleep(latency); // simulate response latency
     if (checkBoat) {
-        write(connfd, "CHECK", 5);
+        char message[MAX_MESSAGE_LENGTH + 1] = "CHECK";
+        size_t message_length = strlen(message);
+        write(connfd, &message_length, sizeof(size_t));
+        write(connfd, message, message_length);
     } else {
-        write(connfd, "PASS", 4);
+        char message[MAX_MESSAGE_LENGTH + 1] = "PASS";
+        size_t message_length = strlen(message);
+        write(connfd, &message_length, sizeof(size_t));
+        write(connfd, message, message_length);
     }
     printf("Sent response to boat.\n");
-    read(connfd, transaction, 6);
-    transaction[7] = '\0';
+    size_t transaction_length;
+    read(connfd, &transaction_length, sizeof(size_t));
+    if(transaction_length > MAX_MESSAGE_LENGTH){
+        printf("Invalid notification size received.\n");
+        close(connfd);
+        free(currentBoat->destination);
+        free(currentBoat);
+        pthread_exit(NULL);
+    }
+    read(connfd, transaction, transaction_length);
+    transaction[transaction_length] = '\0';
 
     if (strcmp(transaction, "COMMIT") != 0) {
         printf("Discarding...\n");
@@ -238,7 +254,7 @@ void rebalanceHeaps(SENAEBuffer *buffer) {
 }
 
 void sigpipe_handler(int signum) {
-    printf("Thread received SIGPIPE, exiting...\n");
+    printf("Client disconnected, closing it's worker thread...\n");
     sem_post(&mutex);
     pthread_exit(NULL);
 }

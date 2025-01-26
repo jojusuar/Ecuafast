@@ -6,7 +6,7 @@ Execute `$ make` on a Bash terminal.
 
 ## Simple execution example
 1. Execute `$ ./servicelauncher` on a Bash terminal.
-2. Execute `$ ./boatgenerator` on a different Bash terminal.
+2. Execute `$ ./boatgenerator` on a Bash terminal.
 
 ## Advanced execution
 1. Execute `$ ./sri [-f] <response latency floor> [-t] <response latency ceiling>`.
